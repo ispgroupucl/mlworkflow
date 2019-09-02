@@ -1,0 +1,6 @@
+__*
+!__init__.py
+.*
+!.git*
+dist/*
+mlworkflow.egg-info
