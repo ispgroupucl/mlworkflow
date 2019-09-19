@@ -1,5 +1,6 @@
 import dis
 import sys
+import re
 
 
 _unpacking_code = dis.opmap["UNPACK_SEQUENCE"]
@@ -57,3 +58,37 @@ class AttrUnpackage(Unpackable):
 def unpack(obj, mode="item", default=_default):
     cls = {"item": ItemUnpackable, "attr": AttrUnpackage}[mode]
     return cls(obj, default=default)
+
+
+_unpack_cache = {}
+capturer = re.compile(r", *")
+def _unpack(obj, keys, mode, default):
+    _id = (keys, mode, default is _default)
+    unpacker = _unpack_cache.get(_id, None)
+    if unpacker is None:
+        keys = capturer.split(keys)
+        if mode == "item":
+            formatter = "obj.get({!r},default)"
+        elif mode == "attr":
+            formatter = "getattr(obj,{!r},default)"
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
+
+        if default is _default:
+            formatter = formatter.replace(",default", "")
+        
+        code = "lambda obj,default: ({},)".format(
+               ",".join([formatter.format(key) for key in keys])
+               )
+            
+        unpacker = eval(code, dict())
+        _unpack_cache[_id] = unpacker
+    return unpacker(obj, default)
+
+
+def unpitems(obj, keys, default=_default):
+    return _unpack(obj, keys, "item", _default)
+
+
+def unpattrs(obj, keys, default=_default):
+    return _unpack(obj, keys, "attr", _default)

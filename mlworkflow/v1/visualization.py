@@ -11,7 +11,7 @@ def palette(N, zero=[0,0,0], cmap=plt.cm.jet):
 
 def arrays_to_rgba(r=None, g=None, b=None, alpha=None, scale=1):
     """Merge arrays to end up with 4 UINT8 channels from individual arrays"""
-    _first = [x for x in (r, g, b) if x is not None][0]
+    _first = [np.asarray(x) for x in (r, g, b) if x is not None][0]
     if r is None: r = np.zeros_like(_first)
     if g is None: g = np.zeros_like(_first)
     if b is None: b = np.zeros_like(_first)
@@ -26,6 +26,7 @@ def arrays_to_rgba(r=None, g=None, b=None, alpha=None, scale=1):
 
 def array_to_rgba(image, scale=1, CHW=False):
     """Transform an input array to end up with 4 UINT8 channels"""
+    image = np.asarray(image)
     if len(image.shape) == 2:
         image = image[...,None]
     elif CHW:

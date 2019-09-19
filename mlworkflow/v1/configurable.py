@@ -5,33 +5,35 @@ import textwrap
 import warnings
 
 
-class MetaLazyConfigurable(type):
+class MetaLazy(type):
     def __new__(cls, name, bases, dic):
         lazy_fields = {}
         for base in bases:
-            lazy_fields.update(getattr(base, "_MetaLazyConfigurable__lazy_fields", ()))
+            lazy_fields.update(getattr(base, "_MetaLazy__lazy_fields", ()))
 
         for factory in dic:
             if factory.endswith("__init"):
                 pname = factory[:-6]
                 lazy_fields[pname] = factory
-        dic["_MetaLazyConfigurable__lazy_fields"] = lazy_fields
+        dic["_MetaLazy__lazy_fields"] = lazy_fields
 
         return super().__new__(cls, name, bases, dic)
 
 
-_no_value = object()
-class LazyConfigurable(metaclass=MetaLazyConfigurable):
-    def __init__(self, cfg):
-        self.cfg = cfg
-
+class Lazy(metaclass=MetaLazy):
     def __getattr__(self, name):
-        factory = self._MetaLazyConfigurable__lazy_fields.get(name, None)
+        factory = self._MetaLazy__lazy_fields.get(name, None)
         if factory is not None:
             res = getattr(self, factory)()
             setattr(self, name, res)
             return res
         return getattr(super(), name)
+
+
+_no_value = object()
+class LazyConfigurable(Lazy):
+    def __init__(self, cfg):
+        self.cfg = cfg
 
     def __getitem__(self, key):
         current = self.cfg
