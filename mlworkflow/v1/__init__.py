@@ -7,6 +7,6 @@ from .datasets import (AugmentedDataset, CachedDataset, CacheKeysDataset, CacheL
     TransformedDataset,
     chunkify, pickle_or_load)
 from .data_collection import DataCollection
-from .configurable import (LazyConfigurable,
+from .configurable import (Lazy, LazyConfigurable, lazyproperty,
     cfg_call, exec_dict, exec_flat, flat_to_dict, get_callable)
 from .visualization import array_to_rgba, arrays_to_rgba, palette
