@@ -36,8 +36,10 @@ class _lazyproperty:
     def __init__(self, name):
         self.name = name
     def __get__(self, instance, tpe):
-        # TODO: Check __getattr__ is not called twice when an exception is raised
-        return instance.__getattr__(self.name)
+        # NOTE: __getattr__ is called twice if an AttributeError is raised
+        # raising AttributeError is 50% slower, which is best ?
+        # return instance.__getattr__(self.name)
+        raise AttributeError
 
 
 class MetaLazy(type):
@@ -48,14 +50,9 @@ class MetaLazy(type):
 
         for name, value in tuple(dic.items()):
             if isinstance(value, lazyproperty):
-                name, init_name = name, name+"__init"
                 dic[name] = _lazyproperty(name)
-                dic[init_name] = value.initializer
-                lazy_fields[name] = init_name
-            elif name.endswith("__init"):
-                name, init_name = name[:-6], name
-                dic[init_name] = _lazyproperty(name)
-                lazy_fields[name] = init_name
+                lazy_fields[name] = value.initializer
+
         dic["_MetaLazy__lazy_fields"] = lazy_fields
 
         return super().__new__(cls, name, bases, dic)
@@ -65,10 +62,15 @@ class Lazy(metaclass=MetaLazy):
     def __getattr__(self, name):
         initializer = self._MetaLazy__lazy_fields.get(name, None)
         if initializer is not None:
-            value = getattr(self, initializer)()
+            value = initializer(self)
             self.__class__.__setlazy__(self, name, value)
             return value
-        raise AttributeError()
+        __getattr__ = getattr(super(), "__getattr__", None)
+        if __getattr__ is not None:
+            return __getattr__(name)
+        cls = self.__class__
+        raise AttributeError("Attribute {!r} not found in {!r}.".format(name,
+            cls.__module__+"."+cls.__qualname__))
 
     # Minimal overhead attribute setting
     # One can change it with __setlazy__ = setattr
@@ -113,8 +115,8 @@ def cfg_call(d, *args, **kwargs):
     return callee(*args, **kwargs, **d)
 
 
-def exec_dict(dst, source, env):
-    for qualname, exp in source.items():
+def exec_dict(dst, statements, env):
+    for qualname, exp in statements:
         current = dst
         *parents, name = qualname.split(".")
         for parname in parents:
@@ -133,8 +135,8 @@ def exec_dict(dst, source, env):
     return dst
 
 
-def exec_flat(dst, source, env):
-    for name, exp in source.items():
+def exec_flat(dst, statements, env):
+    for name, exp in statements:
         dst[name] = eval(exp, env)
     return dst
 
