@@ -3,10 +3,15 @@ from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
 import numpy as np
 import functools
+import types
 import sys
 import os
 
+import threading
+
+import warnings
 import weakref
+import collections
 
 
 def chunkify(iterable, n, skip_incomplete=False):
@@ -33,9 +38,75 @@ def chunkify(iterable, n, skip_incomplete=False):
         yield ret[:last_n]  # yield the incomplete subset ([] if i = -1)
 
 
+_NOVALUE = object()
+class _lazyattr:
+    """Very specific to this place, understand that it can be dangerous before
+    using it anywhere else:
+    It fills the attribute whose name is that of the function, and recomputes
+    the result everytime it is not shielded by that attribute.
+    """
+    def __init__(self, f):
+        self.f = f
+        self.name = f.__name__
+    def __get__(self, instance, owner):
+        value = self.f(instance)
+        setattr(instance, self.name, value)
+        return value
+
+
+class _DatasetKeys:
+    @staticmethod
+    def from_yield_keys(result):
+        if isinstance(result, _DatasetKeys):
+            return result
+        if isinstance(result, collections.abc.Sized):
+            return _CompleteDatasetKeys(result)
+        return _DatasetKeys(result)
+
+    def __init__(self, generator):
+        self.keys = []
+        self.generator = iter(generator)
+
+    def __getitem__(self, i):
+        try:
+            while i >= len(self.keys):
+                self.keys.append(next(self.generator))
+        except StopIteration:
+            self.keys = tuple(self.keys)
+            del self.generator
+            self.__class__ = _CompleteDatasetKeys
+        return self.keys[i]
+
+    def all(self):
+        self.keys = (*self.keys, *self.generator)
+        del self.generator
+        self.__class__ = _CompleteDatasetKeys
+        return self.keys
+
+    def __repr__(self):
+        return "DatasetKeys(incomplete, {!r})".format(self.keys)
+
+
+class _CompleteDatasetKeys:
+    def __init__(self, sized):
+        self.keys = tuple(sized)
+
+    def all(self):
+        return self.keys
+
+    def __getitem__(self, i):
+        return self.keys.__getitem__(i)
+
+    def __len__(self):
+        return self.keys.__len__()
+
+    def __repr__(self):
+        return "DatasetKeys(complete, {!r})".format(self.keys)
+
+
 class Dataset(metaclass=ABCMeta):
     """The base class for any dataset, provides the and batches methods from
-    gen_keys() and get_item(key)
+    yield_keys() and query_item(key)
 
     >>> d = DictDataset({0: ("Denzel", "Washington"), 1: ("Tom", "Hanks")})
     >>> d.query([0, 1])
@@ -48,26 +119,45 @@ class Dataset(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def gen_keys(self):
-        pass
+    def yield_keys(self):
+        raise NotImplementedError()
 
     @abstractmethod
-    def get_item(self, key):
+    def query_item(self, key):
         """Returns a tuple for one item, typically (Xi, Yi), or (Xi,)
         """
         pass
 
+    @_lazyattr
+    def keys(self):
+        return _DatasetKeys.from_yield_keys(self.yield_keys())
+
+    def query(self, keys, wrapper=np.array):
+        batch = None
+        for key in keys:
+            item = self.query_item(key)
+            if batch is None:
+                batch = {k:[v] for k, v in item.items()}
+            else:
+                for k in batch:
+                    batch[k].append(item[k])
+        for k in batch:
+            batch[k] = wrapper(batch[k])
+        return batch
+
+    def batches(self, keys, batch_size, skip_incomplete=False):
+        for key_chunk in chunkify(keys, n=batch_size, skip_incomplete=skip_incomplete):
+            yield key_chunk, self.query(key_chunk)
+
     @property
-    def parent_dataset(self):
-        return self._parent_dataset
+    def parent(self):
+        return self._parent
 
-    @parent_dataset.setter
-    def parent_dataset(self, parent_dataset):
-        self._parent_dataset = parent_dataset
-        if self._parent_dataset is not None:
-            self._context = parent_dataset.context.new_child(self.context.maps[0])
-
-    dataset = parent_dataset
+    @parent.setter
+    def parent(self, parent):
+        self._parent = parent
+        if self._parent is not None:
+            self._context = parent.context.new_child(self.context.maps[0])
 
     @property
     def context(self):
@@ -76,6 +166,16 @@ class Dataset(metaclass=ABCMeta):
         except AttributeError:
             self._context = ChainMap()
             return self._context
+
+    @property
+    def dataset(self):
+        warnings.warn("'dataset.dataset' is deprecated. Please use 'dataset.parent'")
+        return self.parent
+
+    @dataset.setter
+    def dataset(self, parent):
+        warnings.warn("'dataset.dataset' is deprecated. Please use 'dataset.parent'")
+        self.parent = parent
 
 
 class TransformedDataset(Dataset):
@@ -86,78 +186,26 @@ class TransformedDataset(Dataset):
     >>> d.query([0, 1])
     (array(['D.', 'T.'], ...), array(['Washington', 'Hanks'], ...))
     """
-    def __init__(self, dataset, transforms=[]):
+    def __init__(self, parent, transforms=()):
         """Creates a dataset performing operations for modifying another"""
-        self.dataset = dataset
-        self.transforms = [(t, getattr(t, "needs_key", False))
-                           for t in transforms]
+        self.parent = parent
+        self.transforms = list(transforms)
 
-    def gen_keys(self):
-        return self.dataset.gen_keys()
+    def yield_keys(self):
+        return self.parent.keys
 
-    def get_item(self, key):
-        item = self.dataset.get_item(key)
-        for transform, needs_key in self.transforms:
-            if needs_key:
-                item = transform(key, item)
-            else:
-                item = transform(item)
+    def query_item(self, key):
+        item = self.parent.query_item(key)
+        for transform in self.transforms:
+            item = transform(key, item)
         return item
 
-    def add_transform(self, transform=None, *, needs_key=False):
-        _needs_key = needs_key
-        def add_transform(transform):
-            needs_key = _needs_key
-            if not needs_key:
-                needs_key = getattr(transform, "needs_key", False)
-            item = (transform, needs_key)
-            self.transforms.append(item)
-            return transform
-        if transform is not None:
-            return add_transform(transform)
-        return add_transform
+    def add_transform(self, transform):
+        self.transforms.append(transform)
+        return transform
 
     def add_transforms(self, transforms):
-        self.transforms.extend((t, getattr(t, "needs_key", False))
-                               for t in transforms)
-
-
-class CacheLastDataset(Dataset):
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.cache = (None, None)
-
-    def gen_keys(self):
-        return self.dataset.gen_keys()
-
-    def after_cache_miss(self, key, item):
-        pass
-
-    def get_item(self, key):
-        cached_key, item = self.cache
-        if key != cached_key:
-            item = self.dataset.get_item(key)
-            self.cache = (key, item)
-            self.after_cache_miss(key, item)
-        return item
-
-
-class CacheKeysDataset(Dataset):
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.keys = None
-
-    def _gen_keys(self):
-        keys = []
-        for key in self.dataset.gen_keys():
-            keys.append(key)
-            yield key
-        self.keys = tuple(keys)
-
-    def gen_keys(self):
-        if self.keys is not None:
-            return self.keys
-        return self._gen_keys()
+        self.transforms.extend(transforms)
 
 
 class AugmentedDataset(Dataset, metaclass=ABCMeta):
@@ -170,32 +218,36 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
     ...         yield (root_key, 1), root_item[::-1]
     >>> d = DictDataset({0: ("Denzel", "Washington"), 1: ("Tom", "Hanks")})
     >>> d = PermutingDataset(d)
-    >>> new_keys = list(d.gen_keys())
+    >>> new_keys = d.keys()
     >>> new_keys
-    [(0, 0), (0, 1), (1, 0), (1, 1)]
+    ((0, 0), (0, 1), (1, 0), (1, 1))
     >>> d.query(new_keys)
     (array(['Denzel', 'Washington', 'Tom', 'Hanks'], ...),
      array(['Washington', 'Denzel', 'Hanks', 'Tom'], ...))
     """
-    def __init__(self, dataset):
-        self.dataset = dataset
+    def __init__(self, parent):
+        self.parent = parent
         self.cache = (None, None)
 
     def _augment(self, root_key):
-        if self.cache[0] != root_key:
-            root_item = self.dataset.get_item(root_key)
+        cache = self.cache
+        if cache[0] != root_key:
+            root_item = self.parent.query_item(root_key)
             new_items = dict(self.augment(root_key, root_item))
-            self.cache = (root_key, new_items)
-        return self.cache[1]
+            cache = self.cache = (root_key, new_items)
+        return cache[1]
 
-    def gen_keys(self):
-        for root_key in self.dataset.gen_keys():
-            yield from self._augment(root_key).keys()
+    def yield_keys(self):
+        keys = []
+        for root_key in self.parent.keys:
+            new_keys = self._augment(root_key).keys()
+            keys.extend(new_keys)
+            yield from new_keys
 
     def root_key(self, key):
         return key[0]
 
-    def get_item(self, key):
+    def query_item(self, key):
         root_key = self.root_key(key)
         return self._augment(root_key)[key]
 
@@ -204,52 +256,26 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
         pass
 
 
-class FilteredDataset(AugmentedDataset):
-    def __init__(self, dataset, predicate, keep_positive=True):
-        super().__init__(dataset)
-        self.predicate = predicate
-        self.keep_positive = keep_positive
-
-    def augment(self, key, item):
-        truth_value = self.predicate(key, item)
-        if truth_value is self.keep_positive:
-            yield (key, item)
-        else:
-            assert truth_value is (not self.keep_positive), (
-                "Predicate {!r} should return a boolean value"
-                .format(self.predicate)
-            )
-
-    def root_key(self, key):
-        return key
-
-
 class CachedDataset(Dataset):
     """Creates a dataset caching the result of another"""
-    def __init__(self, dataset):
-        self.dataset = dataset
+    def __init__(self, parent):
+        self.parent = parent
         self.cache = {}
 
-    def _unforgotten_gen_keys(self):
-        return self.dataset.gen_keys()
-    gen_keys = _unforgotten_gen_keys
+    def yield_keys(self):
+        return self.parent.keys
 
-    def get_item(self, key):
+    def query_item(self, key):
         tup = self.cache.get(key, None)
         if tup is not None:
             return tup
-        tup = self.dataset.get_item(key)
+        tup = self.parent.query_item(key)
         self.cache[key] = tup
         return tup
 
-    def _cached_keys(self):
-        return self.cache.keys()
-
-    def fill_forget(self):
-        for key in self.dataset.gen_keys():
-            self.get_item(key)
-        self.gen_keys = self._cached_keys
-        self.dataset = None
+    def fill(self):
+        for key in self.parent.keys:
+            self.query_item(key)
         return self
 
 
@@ -266,11 +292,11 @@ class PickledDataset(Dataset):
         with open("file_path", "rb") as f:
             pd = PickledDataset(f)
             pd = TransformedDataset(pd, [lambda x, draw: (x, x)])
-            X, Y = pd.query(pd.gen_keys())
+            X, Y = pd.query(pd.keys())
             model.fit(X, Y)
     """
     @staticmethod
-    def create(dataset, file_handler, gen_keys_wrapper=None, keys=None):
+    def create(dataset, file_handler, yield_keys_wrapper=None, keys=None):
         if isinstance(file_handler, str):
             with open(file_handler, "wb") as file_handler:
                 return PickledDataset.create(dataset, file_handler, keys=keys)
@@ -280,13 +306,13 @@ class PickledDataset(Dataset):
         file_handler.seek(0)
         pickler.dump(1 << 65)  # 64 bits placeholder
         if keys is None:
-            keys = dataset.gen_keys()
-        if gen_keys_wrapper is not None:
-            keys = gen_keys_wrapper(keys)
+            keys = dataset.keys
+        if yield_keys_wrapper is not None:
+            keys = yield_keys_wrapper(keys)
         for key in keys:
             # pickle objects and build index
             index[key] = file_handler.tell()
-            obj = dataset.get_item(key)
+            obj = dataset.query_item(key)
             pickler.dump(obj)
             pickler.memo.clear()
         # put index and record offset
@@ -325,10 +351,10 @@ class PickledDataset(Dataset):
     def __setstate__(self, state):
         self.__init__(*state)
 
-    def gen_keys(self):
+    def yield_keys(self):
         return self.index.keys()
 
-    def get_item(self, key):
+    def query_item(self, key):
         self.file_handler.seek(self.index[key])
         ret = self.unpickler.load()
         self.unpickler.memo.clear()
@@ -361,10 +387,10 @@ def _recursive_equality(a, b):
 
 
 def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1, before_pickling=None,
-                   gen_keys_wrapper=None, are_equal=_recursive_equality):
+                   yield_keys_wrapper=None, are_equal=_recursive_equality):
     from io import IOBase
     if isinstance(path, IOBase):
-        PickledDataset.create(dataset, path, keys=keys, gen_keys_wrapper=gen_keys_wrapper)
+        PickledDataset.create(dataset, path, keys=keys, yield_keys_wrapper=yield_keys_wrapper)
         return PickledDataset(path)
     was_existing = os.path.exists(path)
     if not was_existing:
@@ -373,21 +399,21 @@ def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1, before_pi
             before_pickling()
         try:
             with open(path, "wb") as file:
-                PickledDataset.create(dataset, file, keys=keys, gen_keys_wrapper=gen_keys_wrapper)
+                PickledDataset.create(dataset, file, keys=keys, yield_keys_wrapper=yield_keys_wrapper)
         except BaseException as exc:  # catch ALL exceptions
             if file is not None:  # if the file has been created, it is partial
                 os.remove(path)
             raise
     opened_dataset = PickledDataset(open(path, "rb"))
     if keys is None:
-        keys = dataset.gen_keys()
+        keys = dataset.keys
     chunk = next(chunkify(keys, check_first_n_items))
     reason = None
     for k in chunk:
-        true_item = dataset.get_item(k)
+        true_item = dataset.query_item(k)
         try:
             try:
-                loaded_item = opened_dataset.get_item(k)
+                loaded_item = opened_dataset.query_item(k)
             except KeyError as exc:
                 raise DiffReason("Pickled dataset does not contain key " +
                                  str(exc))
@@ -410,8 +436,8 @@ def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1, before_pi
                       "Or are_equal may be wrongly implemented.".format(path),
                       file=sys.stderr)
             if not was_existing:
-                print("Since the dataset has just been created, it you may want "
-                      "to check the determinism of dataset.get_item.",
+                print("Since the dataset has just been created, you may want "
+                      "to check the determinism of dataset.query_item.",
                       file=sys.stderr)
             break
     return opened_dataset
@@ -426,46 +452,46 @@ except ImportError:
 class SqueezedDataset(Dataset):
     config = (9, "blosclz", True)
 
-    def __init__(self, dataset, keys, config=None):
-        self.dataset = dataset
-        self.keys = keys
+    def __init__(self, parent, attributes, config=None):
+        self.parent = parent
+        self.attributes = attributes
         if config is not None:
             self.config = config
 
-    def gen_keys(self):
-        return self.dataset.gen_keys()
+    def yield_keys(self):
+        return self.parent.keys
 
-    def get_item(self, key):
+    def query_item(self, key):
         clevel, cname, shuffle = self.config
 
-        item = self.dataset.get_item(key)
-        for key in self.keys:
-            array = item[key]
+        item = self.parent.query_item(key)
+        for attribute in self.attributes:
+            array = item[attribute]
             array = np.ascontiguousarray(array)
             shape, size, dtype = array.shape, array.size, array.dtype
             comp = blosc.compress_ptr(array.__array_interface__['data'][0], size,
                                       typesize=dtype.itemsize, clevel=clevel,
                                       cname=cname, shuffle=shuffle)
-            item[key] = _SqueezedArray(shape, dtype, comp)
+            item[attribute] = _SqueezedArray(shape, dtype, comp)
         return item
 
 
 class ExpandedDataset(Dataset):
-    def __init__(self, dataset, keys, config=None):
-        self.dataset = dataset
-        self.keys = frozenset(keys)
+    def __init__(self, parent, attributes, config=None):
+        self.parent = parent
+        self.attributes = frozenset(attributes)
         if config is not None:
             self.config = config
 
-    def gen_keys(self):
-        return self.dataset.gen_keys()
+    def yield_keys(self):
+        return self.parent.keys
 
-    def get_item(self, key):
-        item = self.dataset.get_item(key)
+    def query_item(self, key):
+        item = self.parent.query_item(key)
         for key in tuple(item.keys()):
             value = item[key]
             if isinstance(value, _SqueezedArray):
-                if key not in self.keys:
+                if key not in self.attributes:
                     del item[key]
                     continue
                 shape, dtype, comp = item[key]
@@ -483,10 +509,10 @@ class DictDataset(Dataset):
     def __init__(self, dic):
         self.dic = dic
 
-    def gen_keys(self):
+    def yield_keys(self):
         return self.dic.keys()
 
-    def get_item(self, key):
+    def query_item(self, key):
         return self.dic[key]
 
 
