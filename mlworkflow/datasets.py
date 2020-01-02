@@ -299,7 +299,7 @@ class PickledDataset(Dataset):
     def create(dataset, file_handler, yield_keys_wrapper=None, keys=None):
         if isinstance(file_handler, str):
             with open(file_handler, "wb") as file_handler:
-                return PickledDataset.create(dataset, file_handler, keys=keys)
+                return PickledDataset.create(dataset, file_handler, yield_keys_wrapper=yield_keys_wrapper, keys=keys)
         index = {}
         pickler = Pickler(file_handler)
         # allocate space for index offset
