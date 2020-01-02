@@ -14,7 +14,7 @@ import weakref
 import collections
 
 
-def chunkify(iterable, n, skip_incomplete=False):
+def chunkify(iterable, n, drop_incomplete=False):
     """Return a generator providing chunks (lists of size n) of the iterable.
 
     >>> tuple(chunkify(range(10), 5))  # len(iterable) % n == 0
@@ -34,7 +34,7 @@ def chunkify(iterable, n, skip_incomplete=False):
             ret = [None]*n
         ret[i - offset] = e
     last_n = i-offset+1
-    if last_n == n or not skip_incomplete:
+    if last_n == n or not drop_incomplete:
         yield ret[:last_n]  # yield the incomplete subset ([] if i = -1)
 
 
@@ -56,12 +56,12 @@ class _lazyattr:
 
 class _DatasetKeys:
     @staticmethod
-    def from_yield_keys(result):
-        if isinstance(result, _DatasetKeys):
-            return result
-        if isinstance(result, collections.abc.Sized):
-            return _CompleteDatasetKeys(result)
-        return _DatasetKeys(result)
+    def _from_yield_keys(yielded_keys):
+        if isinstance(yielded_keys, _DatasetKeys):
+            return yielded_keys
+        if isinstance(yielded_keys, collections.abc.Sized):
+            return _CompleteDatasetKeys(yielded_keys)
+        return _DatasetKeys(yielded_keys)
 
     def __init__(self, generator):
         self.keys = []
@@ -130,7 +130,7 @@ class Dataset(metaclass=ABCMeta):
 
     @_lazyattr
     def keys(self):
-        return _DatasetKeys.from_yield_keys(self.yield_keys())
+        return _DatasetKeys._from_yield_keys(self.yield_keys())
 
     def query(self, keys, wrapper=np.array):
         batch = None
@@ -145,8 +145,8 @@ class Dataset(metaclass=ABCMeta):
             batch[k] = wrapper(batch[k])
         return batch
 
-    def batches(self, keys, batch_size, skip_incomplete=False):
-        for key_chunk in chunkify(keys, n=batch_size, skip_incomplete=skip_incomplete):
+    def batches(self, keys, batch_size, drop_incomplete=False):
+        for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
             yield key_chunk, self.query(key_chunk)
 
     @property

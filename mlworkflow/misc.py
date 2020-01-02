@@ -7,7 +7,7 @@ import os
 import re
 
 
-_no_value = object()
+_NOVALUE = object()
 
 
 def gen_id(filename):
@@ -86,13 +86,13 @@ class SideRunner:
     def yield_async(self, gen, in_advance=1):
         pending = deque()
         def consume(gen):
-            return next(gen, _no_value)
+            return next(gen, _NOVALUE)
         for _ in range(in_advance):
             pending.append(self.pool.apply_async(consume, args=(gen,)))
         while True:
             pending.append(self.pool.apply_async(consume, args=(gen,)))
             p = pending.popleft().get()
-            if p is _no_value:
+            if p is _NOVALUE:
                 break
             yield p
 

@@ -111,6 +111,7 @@ def get_callable(name):
 def cfg_call(d, *args, **kwargs):
     if isinstance(d, str):
         return get_callable(d)(*args, **kwargs)
+    d = d.copy()
     callee = get_callable(d.pop("_"))
     return callee(*args, **kwargs, **d)
 
