@@ -451,10 +451,9 @@ except ImportError:
 
 class SqueezedDataset(Dataset):
     config = (9, "blosclz", True)
-
-    def __init__(self, parent, attributes, config=None):
+    def __init__(self, parent, compressed_keys, config=None):
         self.parent = parent
-        self.attributes = attributes
+        self.compressed_keys = compressed_keys
         if config is not None:
             self.config = config
 
@@ -464,42 +463,44 @@ class SqueezedDataset(Dataset):
     def query_item(self, key):
         clevel, cname, shuffle = self.config
 
-        item = self.parent.query_item(key)
-        for attribute in self.attributes:
-            array = item[attribute]
+        raw_item = self.parent.query_item(key)
+
+        item = raw_item if isinstance(raw_item, dict) else raw_item.__dict__  # handle dicts-items and objects-items
+        for key in self.compressed_keys:
+            array = item[key]
             array = np.ascontiguousarray(array)
             shape, size, dtype = array.shape, array.size, array.dtype
             comp = blosc.compress_ptr(array.__array_interface__['data'][0], size,
                                       typesize=dtype.itemsize, clevel=clevel,
                                       cname=cname, shuffle=shuffle)
-            item[attribute] = _SqueezedArray(shape, dtype, comp)
-        return item
+            item[key] = _SqueezedArray(shape, dtype, comp)
+        return raw_item
 
 
 class ExpandedDataset(Dataset):
-    def __init__(self, parent, attributes, config=None):
+    compressed_keys = None
+    def __init__(self, parent, compressed_keys):
         self.parent = parent
-        self.attributes = frozenset(attributes)
-        if config is not None:
-            self.config = config
+        if compressed_keys is not None:
+            self.compressed_keys = frozenset(compressed_keys)
 
     def yield_keys(self):
         return self.parent.keys
 
     def query_item(self, key):
-        item = self.parent.query_item(key)
-        for key in tuple(item.keys()):
+        raw_item = self.parent.query_item(key)
+        item = raw_item if isinstance(raw_item, dict) else raw_item.__dict__  # handle dicts-items and objects-items
+        for key in item.keys():
             value = item[key]
             if isinstance(value, _SqueezedArray):
-                if key not in self.attributes:
+                if self.compressed_keys is None or key in self.compressed_keys:
+                    shape, dtype, comp = item[key]
+                    array = np.empty(shape, dtype=dtype)
+                    blosc.decompress_ptr(comp, array.__array_interface__['data'][0])
+                else:
                     del item[key]
-                    continue
-                shape, dtype, comp = item[key]
-                array = np.empty(shape, dtype=dtype)
-                blosc.decompress_ptr(comp, array.__array_interface__['data'][0])
-                item[key] = array
-        return item
-
+            item[key] = array
+        return raw_item
 
 _SqueezedArray = namedtuple("_SqueezedArray", "shape, dtype, comp")
 
