@@ -117,6 +117,7 @@ def cfg_call(d, *args, **kwargs):
 
 
 def exec_dict(dst, statements, env):
+    statements = statements.items() if isinstance(statements, dict) else statements
     for qualname, exp in statements:
         current = dst
         *parents, name = qualname.split(".")
