@@ -117,6 +117,9 @@ def cfg_call(d, *args, **kwargs):
 
 
 def exec_dict(dst, statements, env):
+    if isinstance(statements, dict):
+        statements = statements.items()
+
     for qualname, exp in statements:
         current = dst
         *parents, name = qualname.split(".")
@@ -137,6 +140,9 @@ def exec_dict(dst, statements, env):
 
 
 def exec_flat(dst, statements, env):
+    if isinstance(statements, dict):
+        statements = statements.items()
+
     for name, exp in statements:
         dst[name] = eval(exp, env)
     return dst
