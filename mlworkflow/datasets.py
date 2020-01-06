@@ -104,6 +104,20 @@ class _CompleteDatasetKeys:
         return "DatasetKeys(complete, {!r})".format(self.keys)
 
 
+def _to_dict(obj):
+    to_dict = getattr(obj, "to_dict", _NOVALUE)
+    if to_dict is not _NOVALUE:
+        return to_dict()
+    return {**obj}
+
+
+def _from_dict(obj, dic):
+    from_dict = getattr(obj, "from_dict", _NOVALUE)
+    if from_dict is not _NOVALUE:
+        return from_dict(dic)
+    return type(obj)(**dic)
+
+
 class Dataset(metaclass=ABCMeta):
     """The base class for any dataset, provides the and batches methods from
     yield_keys() and query_item(key)
@@ -136,6 +150,7 @@ class Dataset(metaclass=ABCMeta):
         batch = None
         for key in keys:
             item = self.query_item(key)
+            item = _to_dict(item)
             if batch is None:
                 batch = {k:[v] for k, v in item.items()}
             else:
@@ -145,9 +160,9 @@ class Dataset(metaclass=ABCMeta):
             batch[k] = wrapper(batch[k])
         return batch
 
-    def batches(self, keys, batch_size, drop_incomplete=False):
+    def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
-            yield key_chunk, self.query(key_chunk)
+            yield key_chunk, self.query(key_chunk, wrapper)
 
     @property
     def parent(self):
@@ -277,6 +292,38 @@ class CachedDataset(Dataset):
         for key in self.parent.keys:
             self.query_item(key)
         return self
+
+
+class DictDataset(Dataset):
+    """Mostly an example for a simple in-memory dataset"""
+    def __init__(self, dic):
+        self.dic = dic
+
+    def yield_keys(self):
+        return self.dic.keys()
+
+    def query_item(self, key):
+        return self.dic[key]
+
+
+class FilteredDataset(AugmentedDataset):
+    def __init__(self, parent, predicate, keep_positive=True):
+        super().__init__(parent)
+        self.predicate = predicate
+        self.keep_positive = keep_positive
+
+    def augment(self, key, item):
+        truth_value = self.predicate(key, item)
+        if truth_value is self.keep_positive:
+            yield (key, item)
+        else:
+            assert truth_value is (not self.keep_positive), (
+                "Predicate {!r} should return a boolean value"
+                .format(self.predicate)
+            )
+
+    def root_key(self, key):
+        return key
 
 
 class PickledDataset(Dataset):
@@ -449,12 +496,47 @@ except ImportError:
     pass
 
 
+def _squeezed_copy(obj, clevel, cname, shuffle):
+    """Compress arrays within dicts, tuples and lists, do not dig other objects for now
+    """
+    if isinstance(obj, np.ndarray):
+        array = np.ascontiguousarray(obj)
+        shape, size, dtype = array.shape, array.size, array.dtype
+        comp = blosc.compress_ptr(array.__array_interface__['data'][0], size,
+                                  typesize=dtype.itemsize, clevel=clevel,
+                                  cname=cname, shuffle=shuffle)
+        return _SqueezedArray(shape, dtype, comp)
+    tpe = type(obj)
+    if tpe is tuple or tpe is list:
+        return tpe(_squeezed_copy(el, clevel, cname, shuffle) for el in obj)
+    if tpe is dict:
+        return tpe((k, _squeezed_copy(v, clevel, cname, shuffle))
+                   for k, v in obj.items())
+    return obj
+
+
+def _expanded_copy(obj):
+    """Expand arrays within dicts, tuples and lists, do not dig other objects for now
+    """
+    if isinstance(obj, _SqueezedArray):
+        shape, dtype, comp = obj
+        array = np.empty(shape, dtype=dtype)
+        blosc.decompress_ptr(comp, array.__array_interface__['data'][0])
+        return array
+    tpe = type(obj)
+    if tpe is tuple or tpe is list:
+        return tpe(_expanded_copy(el) for el in obj)
+    if tpe is dict:
+        return tpe((k, _expanded_copy(v))
+                   for k, v in obj.items())
+    return obj
+
+
 class SqueezedDataset(Dataset):
     config = (9, "blosclz", True)
-
-    def __init__(self, parent, attributes, config=None):
+    def __init__(self, parent, compressed_keys, config=None):
         self.parent = parent
-        self.attributes = attributes
+        self.compressed_keys = compressed_keys
         if config is not None:
             self.config = config
 
@@ -463,76 +545,37 @@ class SqueezedDataset(Dataset):
 
     def query_item(self, key):
         clevel, cname, shuffle = self.config
+        raw_item = self.parent.query_item(key)
 
-        item = self.parent.query_item(key)
-        for attribute in self.attributes:
-            array = item[attribute]
-            array = np.ascontiguousarray(array)
-            shape, size, dtype = array.shape, array.size, array.dtype
-            comp = blosc.compress_ptr(array.__array_interface__['data'][0], size,
-                                      typesize=dtype.itemsize, clevel=clevel,
-                                      cname=cname, shuffle=shuffle)
-            item[attribute] = _SqueezedArray(shape, dtype, comp)
+        item = _to_dict(raw_item)
+        for key in self.compressed_keys:
+            item[key] = _squeezed_copy(item[key], clevel, cname, shuffle)
+
+        item = _from_dict(raw_item, item)
         return item
 
 
 class ExpandedDataset(Dataset):
-    def __init__(self, parent, attributes, config=None):
+    def __init__(self, parent, compressed_keys):
         self.parent = parent
-        self.attributes = frozenset(attributes)
-        if config is not None:
-            self.config = config
+        self.compressed_keys = compressed_keys
 
     def yield_keys(self):
         return self.parent.keys
 
     def query_item(self, key):
-        item = self.parent.query_item(key)
-        for key in tuple(item.keys()):
-            value = item[key]
-            if isinstance(value, _SqueezedArray):
-                if key not in self.attributes:
-                    del item[key]
-                    continue
-                shape, dtype, comp = item[key]
-                array = np.empty(shape, dtype=dtype)
-                blosc.decompress_ptr(comp, array.__array_interface__['data'][0])
-                item[key] = array
+        raw_item = self.parent.query_item(key)
+        item = _to_dict(raw_item)
+
+        for key in self.compressed_keys:
+            item[key] = _expanded_copy(item[key])
+
+        item = _from_dict(raw_item, item)
         return item
 
 
 _SqueezedArray = namedtuple("_SqueezedArray", "shape, dtype, comp")
 
-
-class DictDataset(Dataset):
-    """Mostly an example for a simple in-memory dataset"""
-    def __init__(self, dic):
-        self.dic = dic
-
-    def yield_keys(self):
-        return self.dic.keys()
-
-    def query_item(self, key):
-        return self.dic[key]
-
-class FilteredDataset(AugmentedDataset):
-    def __init__(self, parent, predicate, keep_positive=True):
-        super().__init__(parent)
-        self.predicate = predicate
-        self.keep_positive = keep_positive
-
-    def augment(self, key, item):
-        truth_value = self.predicate(key, item)
-        if truth_value is self.keep_positive:
-            yield (key, item)
-        else:
-            assert truth_value is (not self.keep_positive), (
-                "Predicate {!r} should return a boolean value"
-                .format(self.predicate)
-            )
-
-    def root_key(self, key):
-        return key
 
 if __name__ == "__main__":
     import doctest
