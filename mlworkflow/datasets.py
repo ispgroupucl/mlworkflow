@@ -515,8 +515,27 @@ class DictDataset(Dataset):
     def query_item(self, key):
         return self.dic[key]
 
+class FilteredDataset(AugmentedDataset):
+    def __init__(self, parent, predicate, keep_positive=True):
+        super().__init__(parent)
+        self.predicate = predicate
+        self.keep_positive = keep_positive
+
+    def augment(self, key, item):
+        truth_value = self.predicate(key, item)
+        if truth_value is self.keep_positive:
+            yield (key, item)
+        else:
+            assert truth_value is (not self.keep_positive), (
+                "Predicate {!r} should return a boolean value"
+                .format(self.predicate)
+            )
+
+    def root_key(self, key):
+        return key
 
 if __name__ == "__main__":
     import doctest
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE |
                     doctest.ELLIPSIS)
+
