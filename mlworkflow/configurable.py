@@ -14,6 +14,10 @@ class lazyproperty:
         return self.initializer(instance)
 
 
+class LazyPropertyError(Exception):
+    pass
+
+
 _NOVALUE = object()
 class _lazyproperty:
     """A placeholder here solely for the purpose of replacing potential class attributes
@@ -39,7 +43,10 @@ class _lazyproperty:
         # NOTE: __getattr__ is called twice if an AttributeError is raised
         # raising AttributeError is 50% slower, which is best ?
         # return instance.__getattr__(self.name)
-        raise AttributeError
+        try:
+            return instance.__getattr__(self.name)
+        except AttributeError:
+            raise LazyPropertyError(repr(self.name))
 
 
 class MetaLazy(type):
