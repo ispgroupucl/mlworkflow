@@ -1,7 +1,7 @@
 from multiprocessing.pool import ThreadPool
 from datetime import datetime
 from collections import deque
-from functools import wraps
+from functools import wraps, partial
 import pickle
 import os
 import re
@@ -67,16 +67,24 @@ class SideRunner:
     def __init__(self):
         self.pool = ThreadPool(1)
         self.pending = deque()
+        self.last_handle = None
 
-    def run_async(self, f):
-        handle = self.pool.apply_async(f)
-        self.pending.append(handle)
+    def ready(self):
+        return self.last_handle is None or self.last_handle.ready()
+
+    def do(self, f, *args, **kwargs):
+        self.last_handle = handle = self.pool.apply_async(partial(f, *args, **kwargs))
         return handle
 
     def wait_for_complete(self, i):
         j = i+1 if i != -1 else None
         for p in self.pending[i:j]:
             p.wait()
+
+    def run_async(self, f):
+        handle = self.pool.apply_async(f)
+        self.pending.append(handle)
+        return handle
 
     def collect_runs(self):
         lst = [handle.get() for handle in self.pending]
