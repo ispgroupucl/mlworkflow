@@ -164,10 +164,18 @@ class Dataset(metaclass=ABCMeta):
     def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
         for dict_chunk in chunkify(keys, chunk_size=batch_size, drop_incomplete=drop_incomplete, query_item=self.query_item):
             batch_keys = list(dict_chunk.keys())
-            batch_values = list(dict_chunk.values())
-            for values in batch_values:
-                for k in values:
-                    values[k] = wrapper(values[k])
+            batch_values = None
+            # Note: this section is copied from the function above (query).
+            # We should factorize this but it makes the pull request harder to read so I left the query function unchanged
+            for item in dict_chunk.values():
+                item = _to_dict(item)
+                if batch_values is None:
+                    batch_values = {k:[v] for k,v in item.items()}
+                else:
+                    for k in batch_values:
+                        batch_values[k].append(item[k])
+            for k in batch_values:
+                batch_values[k] = wrapper(batch_values[k])
             yield batch_keys, batch_values
 
     @property
