@@ -14,7 +14,7 @@ import weakref
 import collections
 
 
-def chunkify(iterable, n, drop_incomplete=False):
+def chunkify(iterable, chunk_size, drop_incomplete=False, query_item=None): # argument name 'query_item' to be changed
     """Return a generator providing chunks (lists of size n) of the iterable.
 
     >>> tuple(chunkify(range(10), 5))  # len(iterable) % n == 0
@@ -24,18 +24,19 @@ def chunkify(iterable, n, drop_incomplete=False):
     >>> tuple(chunkify([], 100))       # Empty iterable example
     ([],)
     """
-    offset = 0
-    ret = [None]*n  # filled the majority of the time => avoid growing list
-    i = -1
-    for i, e in enumerate(iterable):
-        if i - offset == n:  # yield complete sublist and create a new list
-            yield ret
-            offset += n
-            ret = [None]*n
-        ret[i - offset] = e
-    last_n = i-offset+1
-    if last_n == n or not drop_incomplete:
-        yield ret[:last_n]  # yield the incomplete subset ([] if i = -1)
+    d = {}
+    v = None # is it necessary to initialize it ?
+    for k in iterable:
+        if query_item:
+            v = query_item(k)
+            if not v:
+                continue
+        if len(d) == chunk_size:  # yield complete sublist and create a new list
+            yield d if query_item else list(d.keys())
+            d = {}
+        d[k] = v if query_item else None
+    if len(d) == chunk_size or not drop_incomplete:
+        yield d if query_item else list(d.keys())  # yield the incomplete subset ([] if i = -1)
 
 
 _NOVALUE = object()
@@ -161,8 +162,13 @@ class Dataset(metaclass=ABCMeta):
         return batch
 
     def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
-        for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
-            yield key_chunk, self.query(key_chunk, wrapper)
+        for dict_chunk in chunkify(keys, chunk_size=batch_size, drop_incomplete=drop_incomplete, query_item=self.query_item):
+            batch_keys = dict_chunk.keys()
+            batch_values = dict_chunk.values()
+            for values in batch_values:
+                for k in values:
+                    values[k] = wrapper(values[k])
+            yield batch_keys, batch_values
 
     @property
     def parent(self):
