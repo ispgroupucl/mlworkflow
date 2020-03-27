@@ -163,8 +163,8 @@ class Dataset(metaclass=ABCMeta):
 
     def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
         for dict_chunk in chunkify(keys, chunk_size=batch_size, drop_incomplete=drop_incomplete, query_item=self.query_item):
-            batch_keys = dict_chunk.keys()
-            batch_values = dict_chunk.values()
+            batch_keys = list(dict_chunk.keys())
+            batch_values = list(dict_chunk.values())
             for values in batch_values:
                 for k in values:
                     values[k] = wrapper(values[k])
