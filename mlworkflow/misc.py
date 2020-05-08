@@ -1,4 +1,5 @@
 from multiprocessing.pool import ThreadPool
+from collections.abc import MutableMapping
 from datetime import datetime
 from collections import deque
 from functools import wraps, partial
@@ -19,14 +20,31 @@ def gen_id(filename):
 
 
 class DictObject(dict):
-    def __new__(cls, *args, **kwargs):
-        dict_object = super().__new__(cls, *args, **kwargs)
-        dict_object.__dict__ = dict_object
-        return dict_object
+    __slots__ = ("__weakref__",)
 
-    def __repr__(self):
-        return "{}({})".format(self.__class__.__qualname__,
-                               super().__repr__())
+    def __setattr__(self, name, value):
+        self.__setitem__(name, value)
+
+    def __getattr__(self, name):
+        try:
+            return self.__getitem__(name)
+        except KeyError as e:
+            raise AttributeError(*e.args)
+
+    def __delattr__(self, name):
+        try:
+            self.__delitem__(name)
+        except KeyError as e:
+            raise AttributeError(*e.args)
+
+    def __getstate__(self):
+        return self
+
+    def __setstate__(self, d):
+        self.update(d)
+
+    def __repr__(self, d):
+        return f"DictObject({self.__dict__!r})"
 
     @classmethod
     def from_dict(cls, dic):

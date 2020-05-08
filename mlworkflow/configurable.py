@@ -4,21 +4,34 @@ import textwrap
 from .misc import DictObject
 
 
-class lazyproperty:
-    """Declares a property to be lazy (evaluated only if absent from the object)
-    """
-    def __init__(self, initializer):
-        self.initializer = initializer
-    def __get__(self, instance, ownerclass=None):
-        assert False, "lazyproperty should be used within subclasses of Lazy only."
-        return self.initializer(instance)
+_NOVALUE = object()
 
 
 class LazyPropertyError(Exception):
     pass
 
 
-_NOVALUE = object()
+class lazyproperty:
+    """Declares a property to be lazy (evaluated only if absent from the object)
+    Also provides a first basic mechanism for a lazy property. Enhanced by Lazy
+    """
+    def __init__(self, initializer):
+        self.initializer = initializer
+        self.name = initializer.__name__
+
+    def __get__(self, instance, ownerclass=None):
+        return self.initializer(instance)
+        name = self.name
+        value = instance.__dict__.get(name, _NOVALUE)
+        if value is _NOVALUE:
+            try:
+                value = self.initializer(instance)
+            except AttributeError:
+                raise LazyPropertyError(name)
+            instance.__dict__[name] = value
+        return value
+
+
 class _lazyproperty:
     """A placeholder here solely for the purpose of replacing potential class attributes
     that could otherwise propagate by inheritance.
@@ -50,6 +63,8 @@ class _lazyproperty:
 
 
 class MetaLazy(type):
+    """Swaps lazyproperty into _lazyproperty. This helps for more coherent
+    behavior (e.g. different fields may have different initializers)s"""
     def __new__(cls, name, bases, dic):
         lazy_fields = {}
         for base in bases:
@@ -66,6 +81,7 @@ class MetaLazy(type):
 
 
 class Lazy(metaclass=MetaLazy):
+    """Initializer is called via __getattr__"""
     def __getattr__(self, name):
         initializer = self._MetaLazy__lazy_fields.get(name, None)
         if initializer is not None:

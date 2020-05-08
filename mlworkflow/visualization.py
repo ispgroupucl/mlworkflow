@@ -26,7 +26,7 @@ def arrays_to_rgba(r=None, g=None, b=None, alpha=None, scale=1):
     return np.stack((r*scale, g*scale, b*scale, alpha), axis=-1).astype(np.uint8)
 
 
-def array_to_rgba(image, scale=1, CHW=False):
+def array_to_rgba(image, *, CHW=False, scale=1):
     """Transform an input array to end up with 4 UINT8 channels"""
     image = np.asarray(image)
     if len(image.shape) == 2:
