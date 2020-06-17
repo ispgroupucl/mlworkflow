@@ -117,6 +117,21 @@ def _from_dict(obj, dic):
         return from_dict(dic)
     return type(obj)(**dic)
 
+# transforms a list of (key, value) items (dictionaries or dictionarizable objects)
+# into a dictionary of (key, wrapped values)
+def batchify(items, wrapper=np.array):
+    values = {}
+    for item in items:
+        item = _to_dict(item)
+        if not values:
+            values = {k:[v] for k, v in item.items()}
+        else:
+            for k in values:
+                values[k].append(item[k])
+    for k in values:
+        values[k] = wrapper(values[k])
+    return items
+
 
 class Dataset(metaclass=ABCMeta):
     """The base class for any dataset, provides the and batches methods from
@@ -147,18 +162,7 @@ class Dataset(metaclass=ABCMeta):
         return _DatasetKeys._from_yield_keys(self.yield_keys())
 
     def query(self, keys, wrapper=np.array):
-        batch = None
-        for key in keys:
-            item = self.query_item(key)
-            item = _to_dict(item)
-            if batch is None:
-                batch = {k:[v] for k, v in item.items()}
-            else:
-                for k in batch:
-                    batch[k].append(item[k])
-        for k in batch:
-            batch[k] = wrapper(batch[k])
-        return batch
+        return batchify([self.query_item(key) for key in keys], wrapper=wrapper)
 
     def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
