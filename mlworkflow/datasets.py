@@ -118,9 +118,8 @@ def _from_dict(obj, dic):
     return type(obj)(**dic)
 
 def batchify(items, wrapper=np.array):
-    """
-        Transforms a list of (key, value) items (dictionaries or
-        dictionarizable objects) into a dictionary of (key, wrapped values)
+    """Transforms a list of (key, value) items (dictionaries or
+    dictionarizable objects) into a dictionary of (key, wrapped values)
     """
     values = {}
     for item in items:
