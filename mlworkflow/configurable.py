@@ -64,10 +64,10 @@ class _lazyproperty:
 
 class MetaLazy(type):
     """Swaps lazyproperty into _lazyproperty. This helps for more coherent
-    behavior (e.g. different fields may have different initializers)s"""
+    behavior (e.g. different fields may have different initializers)"""
     def __new__(cls, name, bases, dic):
         lazy_fields = {}
-        for base in bases:
+        for base in bases[::-1]:
             lazy_fields.update(getattr(base, "_MetaLazy__lazy_fields", ()))
 
         for name, value in tuple(dic.items()):

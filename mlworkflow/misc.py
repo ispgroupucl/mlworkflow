@@ -43,8 +43,8 @@ class DictObject(dict):
     def __setstate__(self, d):
         self.update(d)
 
-    def __repr__(self, d):
-        return f"DictObject({self.__dict__!r})"
+    def __repr__(self):
+        return "DictObject(%s)" % (super().__repr__(),)
 
     @classmethod
     def from_dict(cls, dic):
