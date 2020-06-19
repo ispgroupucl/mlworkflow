@@ -20,7 +20,6 @@ class lazyproperty:
         self.name = initializer.__name__
 
     def __get__(self, instance, ownerclass=None):
-        return self.initializer(instance)
         name = self.name
         value = instance.__dict__.get(name, _NOVALUE)
         if value is _NOVALUE:
