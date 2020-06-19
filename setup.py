@@ -13,5 +13,5 @@ setup(
     description="Helpers for Machine Learning experiments",
     long_description_content_type="text/markdown",
     packages=find_packages(include=("mlworkflow",)),
-    install_requires=[],
+    install_requires=["matplotlib"],
 )

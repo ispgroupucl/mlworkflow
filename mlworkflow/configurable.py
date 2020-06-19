@@ -68,15 +68,16 @@ class MetaLazy(type):
         declared_lazy_fields = {}
         lazy_fields = {}
 
-        for name, value in tuple(dic.items()):
+        for key, value in tuple(dic.items()):
             if isinstance(value, lazyproperty):
-                dic[name] = _lazyproperty(name)
-                declared_lazy_fields[name] = value.initializer
+                dic[key] = _lazyproperty(key)
+                declared_lazy_fields[key] = value.initializer
 
         dummy_class = super().__new__(cls, name, bases, {})
         for base in dummy_class.mro()[1:][::-1]:
             lazy_fields.update(getattr(base, "_MetaLazy__declared_lazy_fields", ()))
         del dummy_class
+        lazy_fields.update(declared_lazy_fields)
 
         dic["_MetaLazy__declared_lazy_fields"] = declared_lazy_fields
         dic["_MetaLazy__lazy_fields"] = lazy_fields
