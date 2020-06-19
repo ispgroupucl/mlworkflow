@@ -131,7 +131,7 @@ def batchify(items, wrapper=np.array):
                 values[k].append(item[k])
     for k in values:
         values[k] = wrapper(values[k])
-    return items
+    return values
 
 
 class Dataset(metaclass=ABCMeta):
