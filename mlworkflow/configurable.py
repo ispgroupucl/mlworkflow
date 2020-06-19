@@ -66,15 +66,20 @@ class MetaLazy(type):
     """Swaps lazyproperty into _lazyproperty. This helps for more coherent
     behavior (e.g. different fields may have different initializers)"""
     def __new__(cls, name, bases, dic):
+        declared_lazy_fields = {}
         lazy_fields = {}
-        for base in bases[::-1]:
-            lazy_fields.update(getattr(base, "_MetaLazy__lazy_fields", ()))
 
         for name, value in tuple(dic.items()):
             if isinstance(value, lazyproperty):
                 dic[name] = _lazyproperty(name)
-                lazy_fields[name] = value.initializer
+                declared_lazy_fields[name] = value.initializer
 
+        dummy_class = super().__new__(cls, name, bases, {})
+        for base in dummy_class.mro()[1:][::-1]:
+            lazy_fields.update(getattr(base, "_MetaLazy__declared_lazy_fields", ()))
+        del dummy_class
+
+        dic["_MetaLazy__declared_lazy_fields"] = declared_lazy_fields
         dic["_MetaLazy__lazy_fields"] = lazy_fields
 
         return super().__new__(cls, name, bases, dic)
