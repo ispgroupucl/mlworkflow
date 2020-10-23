@@ -2,7 +2,6 @@ from pickle import Pickler, _Unpickler as Unpickler
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
 import numpy as np
-import functools
 import types
 import sys
 import os
@@ -12,6 +11,8 @@ import threading
 import warnings
 import weakref
 import collections
+
+from .misc import SideRunner
 
 
 def chunkify(iterable, n, drop_incomplete=False):
@@ -245,9 +246,10 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
     (array(['Denzel', 'Washington', 'Tom', 'Hanks'], ...),
      array(['Washington', 'Denzel', 'Hanks', 'Tom'], ...))
     """
-    def __init__(self, parent):
+    def __init__(self, parent, yield_async=False):
         self.parent = parent
         self.cache = (None, None)
+        self.keys_yielder = SideRunner().yield_async if yield_async else lambda x:x
 
     def _augment(self, root_key):
         cache = self.cache
@@ -259,7 +261,7 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
 
     def yield_keys(self):
         keys = []
-        for root_key in self.parent.keys:
+        for root_key in self.keys_yielder(self.parent.keys):
             new_keys = self._augment(root_key).keys()
             keys.extend(new_keys)
             yield from new_keys
