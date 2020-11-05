@@ -1,5 +1,4 @@
 from multiprocessing.pool import ThreadPool
-from collections.abc import MutableMapping
 from datetime import datetime
 from collections import deque
 from functools import wraps, partial
@@ -82,8 +81,9 @@ def pickle_cache(path):
 
 
 class SideRunner:
-    def __init__(self):
-        self.pool = ThreadPool(1)
+    def __init__(self, thread_count=1):
+        self.thread_count = thread_count
+        self.pool = ThreadPool(thread_count)
         self.pending = deque()
         self.last_handle = None
 
@@ -99,8 +99,8 @@ class SideRunner:
         for p in self.pending[i:j]:
             p.wait()
 
-    def run_async(self, f):
-        handle = self.pool.apply_async(f)
+    def run_async(self, f, *args, **kwargs):
+        handle = self.pool.apply_async(partial(f, *args, **kwargs))
         self.pending.append(handle)
         return handle
 
@@ -108,8 +108,8 @@ class SideRunner:
         lst = [handle.get() for handle in self.pending]
         self.pending.clear()
         return lst
-
     def yield_async(self, gen, in_advance=1):
+        assert self.thread_count == 1, "Avoid using more than 1 thread with a generator!"
         pending = deque()
         def consume(gen):
             return next(gen, _NOVALUE)
