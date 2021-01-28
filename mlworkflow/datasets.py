@@ -397,6 +397,8 @@ class PickledDataset(Dataset):
         except EOFError:
             pass
 
+        self.lock = threading.Lock()
+
     def __getstate__(self):
         return (self.file_handler.name,)
 
@@ -407,9 +409,11 @@ class PickledDataset(Dataset):
         return self.index.keys()
 
     def query_item(self, key):
+        self.lock.acquire()
         self.file_handler.seek(self.index[key])
         ret = self.unpickler.load()
         self.unpickler.memo.clear()
+        self.lock.release()
         return ret
 
 
