@@ -1,17 +1,14 @@
-from pickle import Pickler, _Unpickler as Unpickler
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
-import numpy as np
-import functools
-import types
-import sys
-import os
-
-import threading
-
-import warnings
-import weakref
 import collections
+import os
+from pickle import Pickler, _Unpickler as Unpickler
+import sys
+import threading
+import warnings
+
+import numpy as np
+
 
 
 def chunkify(iterable, n, drop_incomplete=False):
