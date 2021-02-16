@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
 import collections
 import os
-from pickle import Pickler, _Unpickler as Unpickler
+from pickle import _Pickler as Pickler, _Unpickler as Unpickler
 import sys
 import threading
 import warnings
@@ -388,9 +388,11 @@ class PickledDataset(Dataset):
         index_location ^= 1 << 65
         file_handler.seek(index_location)
         self.index = unpickler.load()
+        unpickler.memo.clear()
         # try to load the context if any
         try:
             self._context = ChainMap(unpickler.load())
+            unpickler.memo.clear()
         except EOFError:
             pass
 
