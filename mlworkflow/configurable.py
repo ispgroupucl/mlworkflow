@@ -25,8 +25,8 @@ class lazyproperty:
         if value is _NOVALUE:
             try:
                 value = self.initializer(instance)
-            except AttributeError:
-                raise LazyPropertyError(name)
+            except AttributeError as e:
+                raise LazyPropertyError(name) from e
             instance.__dict__[name] = value
         return value
 
