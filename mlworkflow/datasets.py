@@ -331,10 +331,10 @@ class FilteredDataset(AugmentedDataset):
         self.predicate = predicate
         self.keep_positive = keep_positive
 
-    def augment(self, key, item):
-        truth_value = self.predicate(key, item)
+    def augment(self, root_key, root_item):
+        truth_value = self.predicate(root_key, root_item)
         if truth_value is self.keep_positive:
-            yield (key, item)
+            yield (root_key, root_item)
         else:
             assert truth_value is (not self.keep_positive), (
                 "Predicate {!r} should return a boolean value"
@@ -361,6 +361,7 @@ class PickledDataset(Dataset):
             X, Y = pd.query(pd.keys())
             model.fit(X, Y)
     """
+    _last_fork = 0
     @staticmethod
     def create(dataset, file_handler, yield_keys_wrapper=None, keys=None):
         if isinstance(file_handler, str):
@@ -393,47 +394,58 @@ class PickledDataset(Dataset):
         index_location ^= 1 << 65
         pickler.dump(index_location)
 
-    def __init__(self, file_handler):
-        if isinstance(file_handler, str):
-            file_handler = open(file_handler, "rb")
-        self.file_handler = file_handler
-        self.unpickler = unpickler = Unpickler(file_handler)
-
+    def __init__(self, filename):
         # load the index offset then the index
-        file_handler.seek(0)
-        index_location = unpickler.load()
-        index_location ^= 1 << 65
-        file_handler.seek(index_location)
-        self.index = unpickler.load()
-        unpickler.memo.clear()
-        # try to load the context if any
-        try:
-            self._context = ChainMap(unpickler.load())
-            unpickler.memo.clear()
-        except EOFError:
-            pass
-
         self.lock = threading.Lock()
+        with self.lock:
+            self._open(filename)
+
+            self.file_handler.seek(0)
+            index_location = self.unpickler.load()
+            index_location ^= 1 << 65
+            self.file_handler.seek(index_location)
+            self.index = self.unpickler.load()
+            self.unpickler.memo.clear()
+            # try to load the context if any
+            try:
+                self._context = ChainMap(self.unpickler.load())
+                self.unpickler.memo.clear()
+            except EOFError:
+                pass
+
+    def _open(self, filename):
+        self.file_handler = open(filename, "rb")
+        self.unpickler = Unpickler(self.file_handler)
+        self._last_fork = PickledDataset._last_fork
 
     def __getstate__(self):
         return (self.file_handler.name,)
 
     def __setstate__(self, state):
-        self.__init__(*state)
+        file_handler, = state
+        self.__init__(file_handler)
 
     def yield_keys(self):
         return self.index.keys()
 
     def query_item(self, key):
-        self.lock.acquire()
-        self.file_handler.seek(self.index[key])
-        ret = self.unpickler.load()
-        self.unpickler.memo.clear()
-        self.lock.release()
+        with self.lock:
+            while self._last_fork < PickledDataset._last_fork:
+                self._open(self.file_handler.name)
+
+            self.file_handler.seek(self.index[key])
+            ret = self.unpickler.load()
+            self.unpickler.memo.clear()
         return ret
 
     def __len__(self):
         return len(self.index)
+
+    @staticmethod
+    def _inc_fork():
+        PickledDataset._last_fork += 1
+
+os.register_at_fork(after_in_child=PickledDataset._inc_fork)
 
 
 class DiffReason(Exception):
