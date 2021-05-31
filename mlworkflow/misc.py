@@ -125,5 +125,5 @@ class SideRunner:
             yield p
 
     def __del__(self):
-        self.pool.close()
+        self.pool.terminate()
         self.pool.join()
