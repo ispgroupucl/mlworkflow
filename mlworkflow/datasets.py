@@ -9,8 +9,6 @@ import warnings
 
 import numpy as np
 
-from boto3.resources import factory
-
 def chunkify(iterable, n, drop_incomplete=False):
     """Return a generator providing chunks (lists of size n) of the iterable.
 
