@@ -9,7 +9,7 @@ import warnings
 
 import numpy as np
 
-
+from boto3.resources import factory
 
 def chunkify(iterable, n, drop_incomplete=False):
     """Return a generator providing chunks (lists of size n) of the iterable.
@@ -246,10 +246,10 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
         self.parent = parent
         self.cache = (None, None)
 
-    def _augment(self, root_key):
+    def _augment(self, root_key, *args, **kwargs):
         cache = self.cache
         if cache[0] != root_key:
-            root_item = self.parent.query_item(root_key)
+            root_item = self.parent.query_item(root_key, *args, **kwargs)
             new_items = dict(self.augment(root_key, root_item))
             cache = self.cache = (root_key, new_items)
         return cache[1]
@@ -264,9 +264,9 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
     def root_key(self, key):
         return key[0]
 
-    def query_item(self, key):
+    def query_item(self, key, *args, **kwargs):
         root_key = self.root_key(key)
-        return self._augment(root_key)[key]
+        return self._augment(root_key, *args, **kwargs)[key]
 
     @abstractmethod
     def augment(self, root_key, root_item):
