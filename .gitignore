@@ -4,3 +4,4 @@ __*
 !.git*
 dist/*
 mlworkflow.egg-info
+build
