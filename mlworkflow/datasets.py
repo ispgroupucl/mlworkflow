@@ -226,8 +226,10 @@ class TransformedDataset(Dataset):
 
 
 class AugmentedDataset(Dataset, metaclass=ABCMeta):
-    """ "Augments" a dataset in the sense that it can produce many items from
-    one item of the dataset.
+    """ "Augments" a dataset in the sense that it can produce many child items
+    from one root item of the dataset. The root key must be retrievable from
+    the child key. By convention, the root key is in the first element of the
+    child key. This is overridable with the `root_key` method.
 
     >>> class PermutingDataset(AugmentedDataset):
     ...     def augment(self, root_key, root_item):
