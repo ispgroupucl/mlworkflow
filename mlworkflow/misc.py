@@ -82,11 +82,14 @@ def pickle_cache(path):
 
 
 class SideRunner:
-    def __init__(self, thread_count=1):
-        self.thread_count = thread_count
-        self.pool = ThreadPool(thread_count)
+    def __init__(self, pool_size=1, impl=ThreadPool):
+        self.pool_size = pool_size
+        self.pool = impl(pool_size)
         self.pending = deque()
         self.last_handle = None
+
+    def __len__(self):
+        return self.pool_size
 
     def ready(self):
         return self.last_handle is None or self.last_handle.ready()
@@ -109,8 +112,10 @@ class SideRunner:
         lst = [handle.get() for handle in self.pending]
         self.pending.clear()
         return lst
+
     def yield_async(self, gen, in_advance=1):
-        if self.thread_count > 1:
+        assert isinstance(self.pool, ThreadPool), "yield_async is only allowed with ThreadPool implementation"
+        if self.pool_size > 1:
             warnings.warn("Avoid using more than 1 thread with a generator")
         pending = deque()
         def consume(gen):
