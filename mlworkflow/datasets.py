@@ -166,6 +166,12 @@ class Dataset(metaclass=ABCMeta):
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
             yield key_chunk, self.query(key_chunk, wrapper)
 
+    def __len__(self):
+        keys = self.keys
+        if isinstance(keys, _CompleteDatasetKeys):
+            return len(keys)
+        raise RuntimeError("Impossible to compute dataset lenght without computing it.")
+
     @property
     def parent(self):
         return self._parent
@@ -309,6 +315,8 @@ class DictDataset(Dataset):
     def query_item(self, key):
         return self.dic[key]
 
+    def __len__(self):
+        return len(self.dic)
 
 class FilteredDataset(AugmentedDataset):
     def __init__(self, parent, predicate, keep_positive=True):
@@ -416,6 +424,9 @@ class PickledDataset(Dataset):
         self.unpickler.memo.clear()
         self.lock.release()
         return ret
+
+    def __len__(self):
+        return len(self.index)
 
 
 class DiffReason(Exception):
