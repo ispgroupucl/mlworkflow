@@ -132,6 +132,7 @@ def batchify(items, wrapper=np.array):
 
 
 class Dataset(metaclass=ABCMeta):
+    _parent = None
     """The base class for any dataset, provides the and batches methods from
     yield_keys() and query_item(key)
 
@@ -168,6 +169,8 @@ class Dataset(metaclass=ABCMeta):
 
     def __len__(self):
         keys = self.keys
+        if self._parent is not None:
+            return len(self._parent)
         if isinstance(keys, _CompleteDatasetKeys):
             return len(keys)
         raise RuntimeError("Impossible to compute dataset lenght without computing it.")
@@ -317,6 +320,7 @@ class DictDataset(Dataset):
 
     def __len__(self):
         return len(self.dic)
+
 
 class FilteredDataset(AugmentedDataset):
     def __init__(self, parent, predicate, keep_positive=True):
