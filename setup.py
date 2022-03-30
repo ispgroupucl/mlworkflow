@@ -9,7 +9,7 @@ setup(
     url="https://github.com/ispgroupucl/mlworkflow",
     license='LGPL',
     version="0.3.10",
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     description="Helpers for Machine Learning experiments",
     long_description_content_type="text/markdown",
     packages=find_packages(include=("mlworkflow",)),
