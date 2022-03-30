@@ -164,6 +164,8 @@ class Dataset(metaclass=ABCMeta):
         return batchify([self.query_item(key) for key in keys], wrapper=wrapper)
 
     def batches(self, batch_size, keys=None, wrapper=np.array, drop_incomplete=False):
+        assert isinstance(batch_size, int), "`batches` signature has changed: keys is now given after batch size and " \
+            "defaults to the whole datasets if `None` is given."
         keys = keys or self.keys
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
             yield key_chunk, self.query(key_chunk, wrapper)
