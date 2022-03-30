@@ -132,6 +132,7 @@ def batchify(items, wrapper=np.array):
 
 
 class Dataset(metaclass=ABCMeta):
+    _parent = None
     """The base class for any dataset, provides the and batches methods from
     yield_keys() and query_item(key)
 
@@ -165,6 +166,14 @@ class Dataset(metaclass=ABCMeta):
     def batches(self, keys, batch_size, wrapper=np.array, drop_incomplete=False):
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
             yield key_chunk, self.query(key_chunk, wrapper)
+
+    def __len__(self):
+        keys = self.keys
+        if self._parent is not None:
+            return len(self._parent)
+        if isinstance(keys, _CompleteDatasetKeys):
+            return len(keys)
+        raise RuntimeError("Impossible to compute dataset lenght without computing it.")
 
     @property
     def parent(self):
@@ -309,6 +318,9 @@ class DictDataset(Dataset):
     def query_item(self, key):
         return self.dic[key]
 
+    def __len__(self):
+        return len(self.dic)
+
 
 class FilteredDataset(AugmentedDataset):
     def __init__(self, parent, predicate, keep_positive=True):
@@ -416,6 +428,9 @@ class PickledDataset(Dataset):
         self.unpickler.memo.clear()
         self.lock.release()
         return ret
+
+    def __len__(self):
+        return len(self.index)
 
 
 class DiffReason(Exception):
