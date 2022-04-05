@@ -38,7 +38,7 @@ The library comes with multiple useful additions to the basic dataset object.
 
 #### Filtered Dataset
 
-`mlworkflow.FilteredDataset(parent, predicate)` allows the filtering of a dataset. The predicate receives the pair (key, value) of the parent dataset and returns True for the pairs that should be kept in the child dataset.
+`mlworkflow.FilteredDataset(parent, predicate)` allows the filtering of a dataset. The predicate receives the pair (key, value) of the parent dataset and returns `True` for the pairs that should be kept in the child dataset.
 
 ```python
 >>> dataset = FilteredDataset(parent, predicate=lambda k,v: k%2==0)
