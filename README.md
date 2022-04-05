@@ -40,7 +40,6 @@ The library comes with multiple useful additions to the basic dataset object.
 
 `mlworkflow.FilteredDataset(parent, predicate)` allows the filtering of a dataset. The predicate receives the pair (key, value) of the parent dataset and returns True for the pairs that should be kept in the child dataset.
 
-exemple:
 ```python
 >>> dataset = FilteredDataset(parent, predicate=lambda k,v: k%2==0)
 >>> [dataset.query_item(key) for key in dataset.yield_keys()]
@@ -49,9 +48,8 @@ exemple:
 
 #### Augmented Dataset
 
-mlworkflow.AugmentedDataset(parent) augments a dataset in the sense that it can produce many items from one item of the dataset. Such dataset must implement the augment method that yields zero, one or multiple item given a (key, value) pair of the parent dataset
+`mlworkflow.AugmentedDataset(parent)` augments a dataset in the sense that it can produce many items from one item of the dataset. Such dataset must implement the augment method that yields zero, one or multiple item given a (key, value) pair of the parent dataset
 
-exemple:
 ```python
 >>> class PermutingDataset(AugmentedDataset):
 ...     def augment(self, root_key, root_item):
@@ -66,7 +64,6 @@ exemple:
 
 `mlworkflow.TransformedDataset(parent, transforms)` apply a list of transformation to a dataset. Each transformation must implement a `__call__` method applied on each (key, value) pair of the parent dataset. The keys remain unchanged.
 
-exemple:
 ```python
 >>> dataset = TransformedDataset(parent, [lambda k,v: v.upper()])
 >>> d.query_item(3)
