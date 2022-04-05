@@ -31,6 +31,7 @@ The dataset object comes with multiple useful methods or properties:
 
 - `Dataset.keys` is a generator of the dataset keys. Keys that need to be computed are computed once and stored for efficient reuse. `Dataset.keys.all()` returns a list of the dataset keys (requiring computing all of them).
 - `Dataset.batches(batch_size, wrapper=np.ndarray)` is a generator yielding batches of `batch_size` from the dataset keys.
+- `Dataset.__len__()` provides the number of pairs (key, value) stored in the dataset. When keys hasn’t been computed yet in the case of laizy chaining with other datasets, it raises an error.
 
 ### Useful generic datasets
 
