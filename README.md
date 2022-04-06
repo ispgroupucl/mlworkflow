@@ -1,6 +1,6 @@
 # MLWorkFlow
 
-This library, is a set of tools made to help machine learning workflows.
+This library is a set of tools made to help machine learning workflows.
 
 ## Installation
 Package is released on PyPI for convenient installation:
