@@ -623,3 +623,13 @@ if __name__ == "__main__":
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE |
                     doctest.ELLIPSIS)
 
+class TolerentDataset(AugmentedDataset):
+    def __init__(self, retry=0):
+        self.retry = retry
+    def augment(self, root_key, root_item):
+        retry = self.retry
+        while root_item is None and retry:
+            root_item = self.parent.query_item(root_key)
+            retry -= 1
+        return root_item
+
