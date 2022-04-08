@@ -161,7 +161,7 @@ class Dataset(metaclass=ABCMeta):
         return _DatasetKeys._from_yield_keys(self.yield_keys())
 
     def query(self, keys, collate_fn=None, wrapper=np.array):
-        collate_fn = collate_fn or lambda x: batchify(x, wrapper=wrapper)
+        collate_fn = collate_fn or (lambda x: batchify(x, wrapper=wrapper))
         return collate_fn([self.query_item(key) for key in keys], wrapper=wrapper)
 
     def batches(self, batch_size: int, keys=None, collate_fn=None, wrapper=np.array, drop_incomplete=False):
