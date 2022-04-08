@@ -162,7 +162,7 @@ class Dataset(metaclass=ABCMeta):
 
     def query(self, keys, collate_fn=None, wrapper=np.array):
         collate_fn = collate_fn or (lambda x: batchify(x, wrapper=wrapper))
-        return collate_fn([self.query_item(key) for key in keys], wrapper=wrapper)
+        return collate_fn([self.query_item(key) for key in keys])
 
     def batches(self, batch_size: int, keys=None, collate_fn=None, wrapper=np.array, drop_incomplete=False):
         assert isinstance(batch_size, int), "`batches` signature has changed: keys is now given after batch size and " \
