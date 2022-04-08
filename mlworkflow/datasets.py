@@ -160,15 +160,16 @@ class Dataset(metaclass=ABCMeta):
     def keys(self):
         return _DatasetKeys._from_yield_keys(self.yield_keys())
 
-    def query(self, keys, wrapper=np.array):
-        return batchify([self.query_item(key) for key in keys], wrapper=wrapper)
+    def query(self, keys, collate_fn=None, wrapper=np.array):
+        collate_fn = collate_fn or (lambda x: batchify(x, wrapper=wrapper))
+        return collate_fn([self.query_item(key) for key in keys])
 
-    def batches(self, batch_size: int, keys=None, wrapper=np.array, drop_incomplete=False):
+    def batches(self, batch_size: int, keys=None, collate_fn=None, wrapper=np.array, drop_incomplete=False):
         assert isinstance(batch_size, int), "`batches` signature has changed: keys is now given after batch size and " \
             "defaults to the whole datasets if `None` is given."
         keys = keys or self.keys
         for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
-            yield key_chunk, self.query(key_chunk, wrapper)
+            yield key_chunk, self.query(key_chunk, collate_fn=collate_fn, wrapper=wrapper)
 
     def __len__(self):
         keys = self.keys
