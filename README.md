@@ -10,7 +10,17 @@ pip install mlworkflow
 
 ## Dataset API
 
-Datasets can be structured as (key, value) pairs where the keys are light and allow efficient querying of the dataset while the values contain the heavy data. This is the idea on which builds the abstract class `mlworkflow.Dataset`.
+Datasets can be structured as (key, value) pairs where the keys are light and allow efficient querying of the dataset while the values contain the heavy data. This is the idea on which builds the abstract class `mlworkflow.Dataset`. The dataset objects comes with multiple useful methods or properties:
+
+- `Dataset.keys` is a generator of the dataset keys. Keys that need to be computed are computed once and stored for efficient reuse. `Dataset.keys.all()` returns a list of the dataset keys (requiring computing all of them).
+- `Dataset.batches(batch_size, wrapper=np.ndarray)` is a generator yielding batches of `batch_size` from the dataset keys.
+- `Dataset.__len__()` provides the number of pairs (key, value) stored in the dataset. When keys hasn’t been computed yet in the case of laizy chaining with other datasets, it raises an error.
+
+The most basic way of browsing items of `dataset`, an instance of an `mlworkflow.Dataset` is:
+```python
+for key in dataset.keys:
+    item = dataset.query_item(key)
+```
 
 ### New dataset implementation
 
@@ -27,11 +37,6 @@ Every `mlworkflow.Dataset` object should implement the `yield_keys()` method, re
 >>> parent = DictDataset({1: "a", 2: "b", 3: "c", 4: "d", 5: "e", 5: "f"})
 ```
 
-The dataset object comes with multiple useful methods or properties:
-
-- `Dataset.keys` is a generator of the dataset keys. Keys that need to be computed are computed once and stored for efficient reuse. `Dataset.keys.all()` returns a list of the dataset keys (requiring computing all of them).
-- `Dataset.batches(batch_size, wrapper=np.ndarray)` is a generator yielding batches of `batch_size` from the dataset keys.
-- `Dataset.__len__()` provides the number of pairs (key, value) stored in the dataset. When keys hasn’t been computed yet in the case of laizy chaining with other datasets, it raises an error.
 
 ### Useful generic datasets
 
