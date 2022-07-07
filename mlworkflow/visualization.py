@@ -1,9 +1,10 @@
-from matplotlib import pyplot as plt
-
 import numpy as np
 
 
-def palette(N, zero=[0,0,0], *, cmap=plt.cm.jet, seed=None):
+def palette(N, zero=[0,0,0], *, cmap=None, seed=None):
+    if cmap is None:
+        from matplotlib import pyplot as plt
+        cmap = plt.cm.jet
     palette = cmap(np.linspace(0,1,N))[:,:3]
     palette = (palette * 255).astype(np.uint8)
     if seed is not None:
