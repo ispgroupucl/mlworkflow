@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
 import collections
+import inspect
 import os
 from pickle import _Pickler as Pickler, _Unpickler as Unpickler
 import sys
@@ -326,7 +327,7 @@ class DictDataset(Dataset):
         return len(self.dic)
 
 
-class FilteredDataset(AugmentedDataset):
+class FilteredDatasetFromPairs(AugmentedDataset):
     def __init__(self, parent, predicate, keep_positive=True):
         super().__init__(parent)
         self.predicate = predicate
@@ -344,6 +345,30 @@ class FilteredDataset(AugmentedDataset):
 
     def root_key(self, key):
         return key
+
+class FilteredDatasetFromKeys(Dataset):
+    def __init__(self, parent, predicate, keep_positive=True):
+        self.parent = parent
+        self.predicate = predicate
+        self.keep_positive = keep_positive
+    def yield_keys(self):
+        for key in self.parent.yield_keys():
+            if self.predicate(key) is self.keep_positive:
+                yield key
+    def __getattr__(self, k):
+        return self.parent.__getattr__(k)
+    def __setattr__(self, k, v):
+        return self.parent.__setattr__(k, v)
+import inspect
+
+def FilteredDataset(parent, predicate, keep_positive=True):
+    predicate_arguments_count = len(inspect.signature(predicate).parameters)
+    if predicate_arguments_count == 1:
+        return FilteredDatasetFromKeys(parent, predicate, keep_positive)
+    if predicate_arguments_count == 2:
+        return FilteredDatasetFromPairs(parent, predicate, keep_positive)
+    raise AttributeError(f"Predicate is expected to have 1 or 2 arguments. Received {predicate_arguments_count}")
+
 
 
 class PickledDataset(Dataset):
