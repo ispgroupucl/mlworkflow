@@ -247,6 +247,43 @@ class TransformedDataset(Dataset):
         self.transforms.extend(transforms)
 
 
+class GeneratorBackedCache:
+    def __init__(self, gen):
+        self.gen = gen
+        self._keys = []
+        self._mapping = {}
+    def _consume_next(self):
+        key, value = next(self.gen)
+        self._keys.append(key)
+        self._mapping[key] = value
+        return key, value
+    def keys(self):
+        try:
+            i = 0
+            while True:
+                if i >= len(self._keys):
+                    self._consume_next()
+                yield self._keys[i]
+                i += 1
+        except StopIteration:
+            pass
+    def __getitem__(self, key):
+        try:
+            while key not in self._keys:
+                self._consume_next()
+            try:
+                return self._mapping[key]
+            except KeyError as e:
+                raise KeyError(f"{key} has been removed from the cache.") from e
+
+        except StopIteration as e:
+            raise KeyError(key) from e
+
+    def pop(self, key):
+        item = self.__getitem__(key)
+        self._mapping.pop(key)
+        return item
+
 class AugmentedDataset(Dataset, metaclass=ABCMeta):
     """ "Augments" a dataset in the sense that it can produce many child items
     from one root item of the dataset. The root key must be retrievable from
@@ -266,23 +303,22 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
     (array(['Denzel', 'Washington', 'Tom', 'Hanks'], ...),
      array(['Washington', 'Denzel', 'Hanks', 'Tom'], ...))
     """
+    caching = True
     def __init__(self, parent):
         self.parent = parent
-        self.cache = (None, None)
+        self._cache = (None, None)
 
     def _augment(self, root_key):
-        cache = self.cache
+        cache = self._cache
         if cache[0] != root_key:
             root_item = self.parent.query_item(root_key)
-            new_items = dict(self.augment(root_key, root_item))
-            cache = self.cache = (root_key, new_items)
+            new_items = GeneratorBackedCache(self.augment(root_key, root_item))
+            cache = self._cache = (root_key, new_items)
         return cache[1]
 
     def yield_keys(self):
-        keys = []
         for root_key in self.parent.keys:
             new_keys = self._augment(root_key).keys()
-            keys.extend(new_keys)
             yield from new_keys
 
     def root_key(self, key):
@@ -290,7 +326,8 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
 
     def query_item(self, key):
         root_key = self.root_key(key)
-        return self._augment(root_key)[key]
+        new_items = self._augment(root_key)
+        return new_items[key] if self.caching else new_items.pop(key)
 
     @abstractmethod
     def augment(self, root_key, root_item):
