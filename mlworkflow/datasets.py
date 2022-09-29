@@ -355,10 +355,8 @@ class FilteredDatasetFromKeys(Dataset):
         for key in self.parent.yield_keys():
             if self.predicate(key) is self.keep_positive:
                 yield key
-    def __getattr__(self, k):
-        return self.parent.__getattr__(k)
-    def __setattr__(self, k, v):
-        return self.parent.__setattr__(k, v)
+    def query_item(self, key):
+        return self.parent.query_item(key)
 import inspect
 
 def FilteredDataset(parent, predicate, keep_positive=True):
