@@ -346,18 +346,21 @@ class FilteredDatasetFromPairs(AugmentedDataset):
     def root_key(self, key):
         return key
 
+
 class FilteredDatasetFromKeys(Dataset):
     def __init__(self, parent, predicate, keep_positive=True):
         self.parent = parent
         self.predicate = predicate
         self.keep_positive = keep_positive
+
     def yield_keys(self):
         for key in self.parent.yield_keys():
             if self.predicate(key) is self.keep_positive:
                 yield key
+
     def query_item(self, key):
         return self.parent.query_item(key)
-import inspect
+
 
 def FilteredDataset(parent, predicate, keep_positive=True):
     predicate_arguments_count = len(inspect.signature(predicate).parameters)
@@ -365,8 +368,8 @@ def FilteredDataset(parent, predicate, keep_positive=True):
         return FilteredDatasetFromKeys(parent, predicate, keep_positive)
     if predicate_arguments_count == 2:
         return FilteredDatasetFromPairs(parent, predicate, keep_positive)
-    raise AttributeError(f"Predicate is expected to have 1 or 2 arguments. Received {predicate_arguments_count}")
-
+    raise AttributeError(f"Predicate is expected to have 1 or 2 arguments." \
+        "Received {predicate_arguments_count}")
 
 
 class PickledDataset(Dataset):
