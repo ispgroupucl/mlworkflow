@@ -336,6 +336,9 @@ class DictDataset(Dataset):
 
 
 class FilteredDatasetFromPairs(AugmentedDataset):
+    """Filtering out items from a parent dataset that don't match the given
+    predicate. Predicate receives the pairs (key, item) from the parent dataset.
+    """
     def __init__(self, parent, predicate, keep_positive=True):
         super().__init__(parent)
         self.predicate = predicate
@@ -356,6 +359,9 @@ class FilteredDatasetFromPairs(AugmentedDataset):
 
 
 class FilteredDatasetFromKeys(Dataset):
+    """Filtering out keys from a parent dataset that don't match the given
+    predicate
+    """
     def __init__(self, parent, predicate, keep_positive=True):
         self.parent = parent
         self.predicate = predicate
@@ -371,6 +377,11 @@ class FilteredDatasetFromKeys(Dataset):
 
 
 def FilteredDataset(parent, predicate, keep_positive=True):
+    """Filters items from a parent dataset, based on a predicate.
+    If predicate has one argument, filter is appies on the dataset keys only and
+    computation is faster.
+    If predicate has two arguments, filter is applied on the pairs (key, item)
+    """
     predicate_arguments_count = len(inspect.signature(predicate).parameters)
     if predicate_arguments_count == 1:
         return FilteredDatasetFromKeys(parent, predicate, keep_positive)
