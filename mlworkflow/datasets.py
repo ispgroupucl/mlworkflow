@@ -248,6 +248,10 @@ class TransformedDataset(Dataset):
 
 
 class GeneratorBackedCache:
+    """A cache based on a generator. When a key requested is not in cache yet,
+    the generator is consumed until the key is found. Items are kept in cache
+    except if `pop` is used.
+    """
     def __init__(self, gen):
         self.gen = gen
         self._keys = []
@@ -283,6 +287,7 @@ class GeneratorBackedCache:
         item = self.__getitem__(key)
         self._mapping.pop(key)
         return item
+
 
 class AugmentedDataset(Dataset, metaclass=ABCMeta):
     """ "Augments" a dataset in the sense that it can produce many child items
