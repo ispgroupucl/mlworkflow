@@ -172,14 +172,10 @@ class Dataset(metaclass=ABCMeta):
             " keys is now given after batch size and defaults to the whole " \
             "datasets if `None` is given."
         keys = keys or self.keys
-        for key_chunk in chunkify(
-            keys,
-            n=batch_size,
-            drop_incomplete=drop_incomplete):
-            yield key_chunk, self.query(
-                key_chunk,
-                collate_fn=collate_fn,
-                wrapper=wrapper)
+        for key_chunk in chunkify(keys, n=batch_size,
+                                  drop_incomplete=drop_incomplete):
+            yield key_chunk, self.query(key_chunk, collate_fn=collate_fn,
+                                        wrapper=wrapper)
 
     def __len__(self):
         keys = self.keys
