@@ -115,6 +115,7 @@ def _from_dict(obj, dic):
         return from_dict(dic)
     return type(obj)(**dic)
 
+
 def batchify(items, wrapper=np.array):
     """Transforms a list of (key, value) items (dictionaries or
     dictionarizable objects) into a dictionary of (key, wrapped values)
@@ -165,12 +166,16 @@ class Dataset(metaclass=ABCMeta):
         collate_fn = collate_fn or (lambda x: batchify(x, wrapper=wrapper))
         return collate_fn([self.query_item(key) for key in keys])
 
-    def batches(self, batch_size: int, keys=None, collate_fn=None, wrapper=np.array, drop_incomplete=False):
-        assert isinstance(batch_size, int), "`batches` signature has changed: keys is now given after batch size and " \
-            "defaults to the whole datasets if `None` is given."
+    def batches(self, batch_size: int, keys=None, collate_fn=None,
+                wrapper=np.array, drop_incomplete=False):
+        assert isinstance(batch_size, int), "`batches` signature has changed:" \
+            " keys is now given after batch size and defaults to the whole " \
+            "datasets if `None` is given."
         keys = keys or self.keys
-        for key_chunk in chunkify(keys, n=batch_size, drop_incomplete=drop_incomplete):
-            yield key_chunk, self.query(key_chunk, collate_fn=collate_fn, wrapper=wrapper)
+        for key_chunk in chunkify(keys, n=batch_size,
+                                  drop_incomplete=drop_incomplete):
+            yield key_chunk, self.query(key_chunk, collate_fn=collate_fn,
+                                        wrapper=wrapper)
 
     def __len__(self):
         keys = self.keys
@@ -178,7 +183,8 @@ class Dataset(metaclass=ABCMeta):
             return len(self._parent)
         if isinstance(keys, _CompleteDatasetKeys):
             return len(keys)
-        raise RuntimeError("Impossible to compute dataset lenght without computing it.")
+        raise RuntimeError("Impossible to return dataset lenght without " \
+            "computing it.")
 
     @property
     def parent(self):
@@ -200,12 +206,14 @@ class Dataset(metaclass=ABCMeta):
 
     @property
     def dataset(self):
-        warnings.warn("'dataset.dataset' is deprecated. Please use 'dataset.parent'")
+        warnings.warn("'dataset.dataset' is deprecated. Please use" \
+            "'dataset.parent'")
         return self.parent
 
     @dataset.setter
     def dataset(self, parent):
-        warnings.warn("'dataset.dataset' is deprecated. Please use 'dataset.parent'")
+        warnings.warn("'dataset.dataset' is deprecated. Please use" \
+            "'dataset.parent'")
         self.parent = parent
 
 
@@ -328,6 +336,9 @@ class DictDataset(Dataset):
 
 
 class FilteredDatasetFromPairs(AugmentedDataset):
+    """Filtering out items from a parent dataset that don't match the given
+    predicate. Predicate receives the pairs (key, item) from the parent dataset.
+    """
     def __init__(self, parent, predicate, keep_positive=True):
         super().__init__(parent)
         self.predicate = predicate
@@ -346,29 +357,38 @@ class FilteredDatasetFromPairs(AugmentedDataset):
     def root_key(self, key):
         return key
 
+
 class FilteredDatasetFromKeys(Dataset):
+    """Filtering out keys from a parent dataset that don't match the given
+    predicate
+    """
     def __init__(self, parent, predicate, keep_positive=True):
         self.parent = parent
         self.predicate = predicate
         self.keep_positive = keep_positive
+
     def yield_keys(self):
         for key in self.parent.yield_keys():
             if self.predicate(key) is self.keep_positive:
                 yield key
-    def __getattr__(self, k):
-        return self.parent.__getattr__(k)
-    def __setattr__(self, k, v):
-        return self.parent.__setattr__(k, v)
-import inspect
+
+    def query_item(self, key):
+        return self.parent.query_item(key)
+
 
 def FilteredDataset(parent, predicate, keep_positive=True):
+    """Filters items from a parent dataset, based on a predicate.
+    If predicate has one argument, filter is appies on the dataset keys only and
+    computation is faster.
+    If predicate has two arguments, filter is applied on the pairs (key, item)
+    """
     predicate_arguments_count = len(inspect.signature(predicate).parameters)
     if predicate_arguments_count == 1:
         return FilteredDatasetFromKeys(parent, predicate, keep_positive)
     if predicate_arguments_count == 2:
         return FilteredDatasetFromPairs(parent, predicate, keep_positive)
-    raise AttributeError(f"Predicate is expected to have 1 or 2 arguments. Received {predicate_arguments_count}")
-
+    raise AttributeError("Predicate is expected to have 1 or 2 arguments. " \
+        f"Received {predicate_arguments_count}")
 
 
 class PickledDataset(Dataset):
@@ -392,7 +412,8 @@ class PickledDataset(Dataset):
     def create(dataset, file_handler, yield_keys_wrapper=None, keys=None):
         if isinstance(file_handler, str):
             with open(file_handler, "wb") as file_handler:
-                return PickledDataset.create(dataset, file_handler, yield_keys_wrapper=yield_keys_wrapper, keys=keys)
+                return PickledDataset.create(dataset, file_handler,
+                    yield_keys_wrapper=yield_keys_wrapper, keys=keys)
         index = {}
         pickler = Pickler(file_handler)
         # allocate space for index offset
@@ -499,11 +520,13 @@ def _recursive_equality(a, b):
     return a == b
 
 
-def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1, before_pickling=None,
-                   yield_keys_wrapper=None, are_equal=_recursive_equality):
+def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1,
+                   before_pickling=None, yield_keys_wrapper=None,
+                   are_equal=_recursive_equality):
     from io import IOBase
     if isinstance(path, IOBase):
-        PickledDataset.create(dataset, path, keys=keys, yield_keys_wrapper=yield_keys_wrapper)
+        PickledDataset.create(dataset, path, keys=keys,
+                              yield_keys_wrapper=yield_keys_wrapper)
         return PickledDataset(path)
     was_existing = os.path.exists(path)
     if not was_existing:
@@ -512,7 +535,8 @@ def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1, before_pi
             before_pickling()
         try:
             with open(path, "wb") as file:
-                PickledDataset.create(dataset, file, keys=keys, yield_keys_wrapper=yield_keys_wrapper)
+                PickledDataset.create(dataset, file, keys=keys,
+                                      yield_keys_wrapper=yield_keys_wrapper)
         except BaseException as exc:  # catch ALL exceptions
             if file is not None:  # if the file has been created, it is partial
                 os.remove(path)
@@ -563,7 +587,8 @@ except ImportError:
 
 
 def _squeezed_copy(obj, clevel, cname, shuffle):
-    """Compress arrays within dicts, tuples and lists, do not dig other objects for now
+    """Compress arrays within dicts, tuples and lists, do not dig other objects
+    for now.
     """
     if isinstance(obj, np.ndarray):
         array = np.ascontiguousarray(obj)
@@ -582,7 +607,8 @@ def _squeezed_copy(obj, clevel, cname, shuffle):
 
 
 def _expanded_copy(obj):
-    """Expand arrays within dicts, tuples and lists, do not dig other objects for now
+    """Expand arrays within dicts, tuples and lists, do not dig other objects
+    for now.
     """
     if isinstance(obj, _SqueezedArray):
         shape, dtype, comp = obj
