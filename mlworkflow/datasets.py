@@ -66,13 +66,14 @@ class _DatasetKeys:
         self.generator = iter(generator)
 
     def __getitem__(self, i):
-        try:
-            while i >= len(self.keys):
-                self.keys.append(next(self.generator))
-        except StopIteration:
-            self.keys = tuple(self.keys)
-            del self.generator
-            self.__class__ = _CompleteDatasetKeys
+        while i >= len(self.keys):
+            key = next(self.generator, None)
+            if key is None:
+                self.keys = tuple(self.keys)
+                del self.generator
+                self.__class__ = _CompleteDatasetKeys
+                break
+            self.keys.append(key)
         return self.keys[i]
 
     def all(self):
