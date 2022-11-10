@@ -72,9 +72,19 @@ class _DatasetKeys:
                 self.keys = tuple(self.keys)
                 del self.generator
                 self.__class__ = _CompleteDatasetKeys
-                break
+                raise StopIteration
             self.keys.append(key)
-        return self.keys[i]
+        else:
+            return self.keys[i]
+
+    def __iter__(self):
+        i = 0
+        while True:
+            try:
+                yield self[i]
+            except StopIteration:
+                break
+            i += 1
 
     def all(self):
         self.keys = (*self.keys, *self.generator)
@@ -285,7 +295,7 @@ class GeneratorBackedCache:
         try:
             return self._mapping[key]
         except KeyError as e:
-            raise KeyError(f"{key} has been removed from the cache.") from e
+            raise KeyError(f"{key} has been removed from cache.") from e
 
     def pop(self, key):
         item = self.__getitem__(key)
