@@ -534,7 +534,11 @@ class PickledDataset(Dataset):
     def _inc_fork():
         PickledDataset._last_fork += 1
 
-os.register_at_fork(after_in_child=PickledDataset._inc_fork)
+try:
+    os.register_at_fork(after_in_child=PickledDataset._inc_fork)
+except AttributeError:
+    warnings.warn("Your OS doesn't support register_at_fork. " \
+        "Avoid using PickledDataset objects from multiple threads")
 
 
 class DiffReason(Exception):
