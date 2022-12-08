@@ -587,7 +587,7 @@ def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1,
             if file is not None:  # if the file has been created, it is partial
                 os.remove(path)
             raise
-    opened_dataset = PickledDataset(open(path, "rb"))
+    opened_dataset = PickledDataset(path)
     if keys is None:
         keys = dataset.keys
     chunk = next(chunkify(keys, check_first_n_items))
