@@ -8,7 +8,7 @@ setup(
     author_email="istassem@gmail.com",
     url="https://github.com/ispgroupucl/mlworkflow",
     license='LGPL',
-    version="0.5.2",
+    version="0.5.3",
     python_requires='>=3.7',
     description="Helpers for Machine Learning experiments",
     long_description_content_type="text/markdown",
