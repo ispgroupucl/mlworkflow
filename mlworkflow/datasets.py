@@ -446,6 +446,7 @@ def FilteredDataset(parent, predicate, keep_positive=True):
     raise AttributeError("Predicate is expected to have 1 or 2 arguments. " \
         f"Received {predicate_arguments_count}")
 
+_PICKLEDDATASET_INDEX_PLACEHOLDER_VALUE = 1 << 65
 
 class PickledDataset(Dataset):
     """A dataset compacted on the disk with Pickle. For initial creation from
@@ -474,17 +475,22 @@ class PickledDataset(Dataset):
         pickler = Pickler(file_handler)
         # allocate space for index offset
         file_handler.seek(0)
-        pickler.dump(1 << 65)  # 64 bits placeholder
+        pickler.dump(_PICKLEDDATASET_INDEX_PLACEHOLDER_VALUE)  # 64 bits placeholder
         if keys is None:
             keys = dataset.keys
         if yield_keys_wrapper is not None:
             keys = yield_keys_wrapper(keys)
-        for key in keys:
-            # pickle objects and build index
-            index[key] = file_handler.tell()
-            obj = dataset.query_item(key)
-            pickler.dump(obj)
-            pickler.memo.clear()
+        try:
+            for key in keys:
+                # pickle objects and build index
+                pos = file_handler.tell()
+                obj = dataset.query_item(key)
+                pickler.dump(obj)
+                pickler.memo.clear()
+                index[key] = pos
+        except KeyboardInterrupt:
+            warnings.warn("KeyboardInterrupt: PickledDataset will be incomplete")
+            pass
         # put index and record offset
         index_location = file_handler.tell()
         pickler.dump(index)
@@ -529,7 +535,12 @@ class PickledDataset(Dataset):
         self.__init__(file_handler)
 
     def yield_keys(self):
-        return self.index.keys()
+        try:
+            return self.index.keys()
+        except AttributeError as e:
+            if self.index == _PICKLEDDATASET_INDEX_PLACEHOLDER_VALUE:
+                raise IOError("Corrupted file") from e
+            raise e
 
     def query_item(self, key):
         with self.lock:
