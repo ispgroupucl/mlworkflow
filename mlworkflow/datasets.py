@@ -66,14 +66,25 @@ class _DatasetKeys:
         self.generator = iter(generator)
 
     def __getitem__(self, i):
-        try:
-            while i >= len(self.keys):
-                self.keys.append(next(self.generator))
-        except StopIteration:
-            self.keys = tuple(self.keys)
-            del self.generator
-            self.__class__ = _CompleteDatasetKeys
-        return self.keys[i]
+        while i >= len(self.keys):
+            key = next(self.generator, None)
+            if key is None:
+                self.keys = tuple(self.keys)
+                del self.generator
+                self.__class__ = _CompleteDatasetKeys
+                raise StopIteration
+            self.keys.append(key)
+        else:
+            return self.keys[i]
+
+    def __iter__(self):
+        i = 0
+        while True:
+            try:
+                yield self[i]
+            except StopIteration:
+                break
+            i += 1
 
     def all(self):
         self.keys = (*self.keys, *self.generator)
@@ -256,32 +267,35 @@ class GeneratorBackedCache:
         self.gen = gen
         self._keys = []
         self._mapping = {}
+
     def _consume_next(self):
-        key, value = next(self.gen)
+        consumed = next(self.gen, None)
+        if consumed is None:
+            return None
+        key, value = consumed
         self._keys.append(key)
         self._mapping[key] = value
         return key, value
-    def keys(self):
-        try:
-            i = 0
-            while True:
-                if i >= len(self._keys):
-                    self._consume_next()
-                yield self._keys[i]
-                i += 1
-        except StopIteration:
-            pass
-    def __getitem__(self, key):
-        try:
-            while key not in self._keys:
-                self._consume_next()
-            try:
-                return self._mapping[key]
-            except KeyError as e:
-                raise KeyError(f"{key} has been removed from the cache.") from e
 
-        except StopIteration as e:
-            raise KeyError(key) from e
+    def keys(self):
+        i = 0
+        while True:
+            if i >= len(self._keys):
+                ret = self._consume_next()
+                if ret is None:
+                    break
+            yield self._keys[i]
+            i += 1
+
+    def __getitem__(self, key):
+        while key not in self._keys:
+            ret = self._consume_next()
+            if ret is None:
+                raise KeyError(key)
+        try:
+            return self._mapping[key]
+        except KeyError as e:
+            raise KeyError(f"{key} has been removed from cache.") from e
 
     def pop(self, key):
         item = self.__getitem__(key)
