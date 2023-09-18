@@ -395,19 +395,27 @@ class FilteredDatasetFromPairs(AugmentedDataset):
     """Filtering out items from a parent dataset that don't match the given
     predicate. Predicate receives the pairs (key, item) from the parent dataset.
     """
-    def __init__(self, parent, predicate, keep_positive=True):
+    def __init__(self, parent, predicate, keep_positive=True, cache=False):
         super().__init__(parent)
         self.predicate = predicate
         self.keep_positive = keep_positive
+        self.cache = {} if cache else None
 
     def augment(self, root_key, root_item):
-        truth_value = self.predicate(root_key, root_item)
+        if self.cache is None or root_key not in self.cache:
+            truth_value = self.predicate(root_key, root_item)
+            if self.cache is not None:
+                self.cache[root_key] = truth_value
+        else:
+            truth_value = self.cache[root_key]
+
         if truth_value is self.keep_positive:
             yield (root_key, root_item)
         else:
             assert truth_value is (not self.keep_positive), (
-                "Predicate {!r} should return a boolean value"
-                .format(self.predicate)
+                "Predicate {!r} should return a boolean value. Received a `{}`"\
+                "from pair ({}, {})."
+                .format(self.predicate, type(truth_value), root_key, root_item)
             )
 
     def root_key(self, key):
@@ -432,7 +440,7 @@ class FilteredDatasetFromKeys(Dataset):
         return self.parent.query_item(key)
 
 
-def FilteredDataset(parent, predicate, keep_positive=True):
+def FilteredDataset(parent, predicate, keep_positive=True, **kwargs):
     """Filters items from a parent dataset, based on a predicate.
     If predicate has one argument, filter is appies on the dataset keys only and
     computation is faster.
@@ -440,9 +448,9 @@ def FilteredDataset(parent, predicate, keep_positive=True):
     """
     predicate_arguments_count = len(inspect.signature(predicate).parameters)
     if predicate_arguments_count == 1:
-        return FilteredDatasetFromKeys(parent, predicate, keep_positive)
+        return FilteredDatasetFromKeys(parent, predicate, keep_positive, **kwargs)
     if predicate_arguments_count == 2:
-        return FilteredDatasetFromPairs(parent, predicate, keep_positive)
+        return FilteredDatasetFromPairs(parent, predicate, keep_positive, **kwargs)
     raise AttributeError("Predicate is expected to have 1 or 2 arguments. " \
         f"Received {predicate_arguments_count}")
 
