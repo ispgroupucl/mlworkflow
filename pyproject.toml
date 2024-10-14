@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mlworkflow"
+version = "0.7.0"
+authors = [
+    {name = "Maxime Istasse", email = "istassem@gmail.com"},
+]
+description = "Helpers for Machine Learning experiments"
+requires-python = ">=3.7"
+dependencies = [
+    "numpy>=1.22",
+]
+readme = "README.md"
+license = {text = "LGPL"}
+urls.Homepage = "https://github.com/ispgroupucl/mlworkflow"
+
+[tool.uv]
+dev-dependencies = ["pytest>=8.3"]
+
