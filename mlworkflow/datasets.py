@@ -146,7 +146,7 @@ def batchify(items, wrapper=np.array):
 
 class Dataset(metaclass=ABCMeta):
     _parent = None
-    """The base class for any dataset, provides the and batches methods from
+    """The base class for any dataset, provides the batches methods from
     yield_keys() and query_item(key)
 
     >>> d = DictDataset({0: ("Denzel", "Washington"), 1: ("Tom", "Hanks")})
@@ -226,6 +226,20 @@ class Dataset(metaclass=ABCMeta):
         warnings.warn("'dataset.dataset' is deprecated. Please use" \
             "'dataset.parent'")
         self.parent = parent
+
+
+class Subset(Dataset):
+    """Subset of a dataset, defined by a specific set of keys.
+    """
+    def __init__(self, parent, keys):
+        self.keys = keys
+        self.parent = parent
+
+    def yield_keys(self):
+        yield from self.keys
+
+    def query_item(self, key):
+        return self.parent.query_item(key)
 
 
 class TransformedDataset(Dataset):
@@ -456,6 +470,7 @@ def FilteredDataset(parent, predicate, keep_positive=True, **kwargs):
 
 _PICKLEDDATASET_INDEX_PLACEHOLDER_VALUE = 1 << 65
 
+
 class PickledDataset(Dataset):
     """A dataset compacted on the disk with Pickle. For initial creation from
     an old dataset::
@@ -474,11 +489,11 @@ class PickledDataset(Dataset):
     """
     _last_fork = 0
     @staticmethod
-    def create(dataset, file_handler, yield_keys_wrapper=None, keys=None):
+    def create(dataset, file_handler, yield_keys_wrapper=None, keys=None, resolve=False):
         if isinstance(file_handler, str):
             with open(file_handler, "wb") as file_handler:
                 return PickledDataset.create(dataset, file_handler,
-                    yield_keys_wrapper=yield_keys_wrapper, keys=keys)
+                    yield_keys_wrapper=yield_keys_wrapper, keys=keys, resolve=resolve)
         index = {}
         pickler = Pickler(file_handler)
         # allocate space for index offset
@@ -493,6 +508,8 @@ class PickledDataset(Dataset):
                 # pickle objects and build index
                 pos = file_handler.tell()
                 obj = dataset.query_item(key)
+                if resolve:
+                    inspect.getmembers(obj)
                 pickler.dump(obj)
                 pickler.memo.clear()
                 index[key] = pos
@@ -645,8 +662,8 @@ def pickle_or_load(dataset, path, keys=None, *, check_first_n_items=1,
         if not equality:
             if reason is not None:
                 print("Warning: Pickled dataset at {} seems to be out of date."
-                      "\nReason: {}".format(path, str(reason),
-                      file=sys.stderr))
+                      "\nReason: {}".format(path, str(reason)),
+                      file=sys.stderr)
             else:
                 print("Warning: Pickled dataset at {} seems to be out of date. "
                       "Or are_equal may be wrongly implemented.".format(path),
