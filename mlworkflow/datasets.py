@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import ChainMap, namedtuple
-import collections
+import collections.abc
 import inspect
 import os
 from pickle import _Pickler as Pickler, _Unpickler as Unpickler
@@ -145,7 +145,6 @@ def batchify(items, wrapper=np.array):
 
 
 class Dataset(metaclass=ABCMeta):
-    _parent = None
     """The base class for any dataset, provides the batches methods from
     yield_keys() and query_item(key)
 
@@ -190,7 +189,7 @@ class Dataset(metaclass=ABCMeta):
 
     def __len__(self):
         keys = self.keys
-        if self._parent is not None:
+        if hasattr(self, "_parent"):
             return len(self._parent)
         if isinstance(keys, _CompleteDatasetKeys):
             return len(keys)
@@ -198,14 +197,13 @@ class Dataset(metaclass=ABCMeta):
             "computing it.")
 
     @property
-    def parent(self):
+    def parent(self) -> "Dataset":
         return self._parent
 
     @parent.setter
-    def parent(self, parent):
+    def parent(self, parent: "Dataset"):
         self._parent = parent
-        if self._parent is not None:
-            self._context = parent.context.new_child(self.context.maps[0])
+        self._context = parent.context.new_child(self.context.maps[0])
 
     @property
     def context(self):
@@ -231,7 +229,7 @@ class Dataset(metaclass=ABCMeta):
 class Subset(Dataset):
     """Subset of a dataset, defined by a specific set of keys.
     """
-    def __init__(self, parent, keys):
+    def __init__(self, parent: Dataset, keys):
         self.keys = keys
         self.parent = parent
 
@@ -250,7 +248,7 @@ class TransformedDataset(Dataset):
     >>> d.query([0, 1])
     (array(['D.', 'T.'], ...), array(['Washington', 'Hanks'], ...))
     """
-    def __init__(self, parent, transforms=()):
+    def __init__(self, parent: Dataset, transforms=()):
         """Creates a dataset performing operations for modifying another"""
         self.parent = parent
         self.transforms = list(transforms)
@@ -369,7 +367,7 @@ class AugmentedDataset(Dataset, metaclass=ABCMeta):
 
 class CachedDataset(Dataset):
     """Creates a dataset caching the result of another"""
-    def __init__(self, parent):
+    def __init__(self, parent: Dataset):
         self.parent = parent
         self.cache = {}
 
